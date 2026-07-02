@@ -19,7 +19,10 @@ unit intf.ZUGFeRDProfile;
 
 interface
 
-uses System.SysUtils,intf.ZUGFeRDVersion,intf.ZUGFeRDExceptions;
+uses
+  System.SysUtils, System.Generics.Collections,
+  intf.ZUGFeRDVersion,
+  intf.ZUGFeRDExceptions;
 
 type
   /// <summary>
@@ -85,8 +88,10 @@ type
   TZUGFeRDProfiles = set of TZUGFeRDProfile;
 
   TZUGFeRDProfileExtensions = class
+  protected
+    class function GetXMPName(profile: TZUGFeRDProfile): string; static;
   public
-    class function FromString(const s: string): TZUGFeRDProfile; static;
+    class function StringToEnum(const s: string): TZUGFeRDProfile; static;
     class function EnumToString(profile: TZUGFeRDProfile; version: TZUGFeRDVersion): string; static;
   end;
 
@@ -97,7 +102,7 @@ implementation
 
 { TZUGFeRDProfileExtensions }
 
-class function TZUGFeRDProfileExtensions.FromString(const s: string): TZUGFeRDProfile;
+class function TZUGFeRDProfileExtensions.StringToEnum(const s: string): TZUGFeRDProfile;
 begin
   // v1
 
@@ -126,14 +131,14 @@ begin
   if SameText(s,'urn:cen.eu:en16931:2017#compliant#urn:zugferd.de:2p0:basic') then
       Result := Basic
   else
-  if SameText(s,'urn: cen.eu:en16931: 2017') then // Spaces inserted to prevent clash with v2.1
+  if SameText(s,'urn: cen.eu:en16931: 2017') then // Spaces inserted to prevent clash with v2.3
       Result := Comfort
   else
   if SameText(s,'urn:cen.eu:en16931:2017#conformant#urn:zugferd.de:2p0:extended') then
       Result := Extended
   else
 
-  // v2.1
+  // v2.3
 
   if SameText(s,'urn:factur-x.eu:1p0:minimum') then
       Result := Minimum
@@ -165,6 +170,7 @@ begin
   else
     Result := Unknown;
 end;
+
 
 class function TZUGFeRDProfileExtensions.EnumToString(profile: TZUGFeRDProfile;
   version: TZUGFeRDVersion): string;
@@ -222,6 +228,20 @@ begin
       end;
   else
     raise TZUGFeRDUnsupportedException.Create('New ZUGFeRDVersion defined but not implemented!');
+  end;
+end;
+
+class function TZUGFeRDProfileExtensions.GetXMPName(profile: TZUGFeRDProfile): string;
+begin
+  case profile of
+    TZUGFeRDProfile.BasicWL: Result:= 'BASIC WL';
+    TZUGFeRDProfile.Comfort,
+    TZUGFeRDProfile.XRechnung1,
+    TZUGFeRDProfile.XRechnung: Result:= 'EN 16931';
+    TZUGFeRDProfile.Basic: Result:= 'BASIC';
+    TZUGFeRDProfile.Extended: Result:= 'EXTENDED';
+    TZUGFeRDProfile.Minimum: Result:= 'MINIMUM';
+    TZUGFeRDProfile.EReporting: Result:= 'EREPORTING';
   end;
 end;
 

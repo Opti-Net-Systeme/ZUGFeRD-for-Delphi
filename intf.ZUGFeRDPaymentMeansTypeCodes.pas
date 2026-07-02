@@ -20,156 +20,644 @@ unit intf.ZUGFeRDPaymentMeansTypeCodes;
 interface
 
 uses
-  System.SysUtils,System.TypInfo
-  ;
+  System.SysUtils,
+  intf.ZUGFeRDHelper;
 
 type
   /// <summary>
   /// Adopted to ZUGFeRD 1.0, German description from ZUGFeRD specification
   /// </summary>
   TZUGFeRDPaymentMeansTypeCodes = (
-    /// <summary>
-    /// Unknown/ invalid value
-    /// </summary>
-    Unknown = 0,
+    {.DefinitionStart}
+    // automatically converted by PSC#ToDelphiDefinition
 
     /// <summary>
-    /// Keine Zahlungsart definiert
-    /// Available in: Extended
+    /// Instrument not defined
     /// </summary>
-    NotDefined = 1,
+    [EnumStringValue('1')]
+    InstrumentNotDefined = 1,
 
     /// <summary>
-    /// Belastung durch automatisierte Clearingstelle, Z.B. bei Abwicklung durch Zahlungsdienstleister wie Online-Bezahlsysteme
+    /// Automated clearing house (ACH) credit
     /// </summary>
-    AutomatedClearingHouseDebit = 3,
+    [EnumStringValue('2')]
+    AchCredit = 2,
 
     /// <summary>
-    /// Bar
-    /// Available in: Basic, Extended
+    /// Automated clearing house (ACH) debit
     /// </summary>
+    [EnumStringValue('3')]
+    AchDebit = 3,
+
+    /// <summary>
+    /// Automated clearing house (ACH) demand debit reversal
+    /// </summary>
+    [EnumStringValue('4')]
+    AchDemandDebitReversal = 4,
+
+    /// <summary>
+    /// Automated clearing house (ACH) demand credit reversal
+    /// </summary>
+    [EnumStringValue('5')]
+    AchDemandCreditReversal = 5,
+
+    /// <summary>
+    /// Automated clearing house (ACH) demand credit
+    /// </summary>
+    [EnumStringValue('6')]
+    AchDemandCredit = 6,
+
+    /// <summary>
+    /// Automated clearing house (ACH) demand debit
+    /// </summary>
+    [EnumStringValue('7')]
+    AchDemandDebit = 7,
+
+    /// <summary>
+    /// Hold
+    /// </summary>
+    [EnumStringValue('8')]
+    Hold = 8,
+
+    /// <summary>
+    /// National or regional clearing
+    /// </summary>
+    [EnumStringValue('9')]
+    NationalOrRegionalClearing = 9,
+
+    /// <summary>
+    /// In cash
+    /// </summary>
+    [EnumStringValue('10')]
     InCash = 10,
 
     /// <summary>
-    /// Scheck
-    /// Available in: Basic, Extended
+    /// ACH savings credit reversal
     /// </summary>
+    [EnumStringValue('11')]
+    AchSavingsCreditReversal = 11,
+
+    /// <summary>
+    /// ACH savings debit reversal
+    /// </summary>
+    [EnumStringValue('12')]
+    AchSavingsDebitReversal = 12,
+
+    /// <summary>
+    /// ACH savings credit
+    /// </summary>
+    [EnumStringValue('13')]
+    AchSavingsCredit = 13,
+
+    /// <summary>
+    /// ACH savings debit
+    /// </summary>
+    [EnumStringValue('14')]
+    AchSavingsDebit = 14,
+
+    /// <summary>
+    /// Bookentry credit
+    /// </summary>
+    [EnumStringValue('15')]
+    BookentryCredit = 15,
+
+    /// <summary>
+    /// Bookentry debit
+    /// </summary>
+    [EnumStringValue('16')]
+    BookentryDebit = 16,
+
+    /// <summary>
+    /// ACH demand cash concentration/disbursement (CCD) credit
+    /// </summary>
+    [EnumStringValue('17')]
+    AchDemandCcdCredit = 17,
+
+    /// <summary>
+    /// ACH demand cash concentration/disbursement (CCD) debit
+    /// </summary>
+    [EnumStringValue('18')]
+    AchDemandCcdDebit = 18,
+
+    /// <summary>
+    /// ACH demand corporate trade payment (CTP) credit
+    /// </summary>
+    [EnumStringValue('19')]
+    AchDemandCtpCredit = 19,
+
+    /// <summary>
+    /// Cheque
+    /// </summary>
+    [EnumStringValue('20')]
     Cheque = 20,
 
     /// <summary>
-    /// Available in: Basic, Extended
+    /// Banker's draft
     /// </summary>
-    CreditTransfer = 30,
+    [EnumStringValue('21')]
+    BankersDraft = 21,
 
     /// <summary>
-    /// Lastschriftübermittlung:
-    /// Zahlung durch Belastung eines Geldbetrages eines
-    /// Kontos zugunsten eines anderen.
-    /// Überweisung international und nationale SEPA-Überweisung
-    ///
-    /// Available in: Extended
+    /// Certified banker's draft
     /// </summary>
-    DebitTransfer = 31,
+    [EnumStringValue('22')]
+    CertifiedBankersDraft = 22,
 
     /// <summary>
-    /// Zahlung an Bankkonto
-    /// Überweisung national, vor SEPA-Umstellung
-    /// Available in: Basic, Extended
+    /// Bank cheque (issued by a banking or similar establishment)
     /// </summary>
+    [EnumStringValue('23')]
+    BankCheque = 23,
+
+    /// <summary>
+    /// Bill of exchange awaiting acceptance
+    /// </summary>
+    [EnumStringValue('24')]
+    BillOfExchangeAwaitingAcceptance = 24,
+
+    /// <summary>
+    /// Certified cheque
+    /// </summary>
+    [EnumStringValue('25')]
+    CertifiedCheque = 25,
+
+    /// <summary>
+    /// Local cheque
+    /// </summary>
+    [EnumStringValue('26')]
+    LocalCheque = 26,
+
+    /// <summary>
+    /// ACH demand corporate trade payment (CTP) debit
+    /// </summary>
+    [EnumStringValue('27')]
+    AchDemandCtpDebit = 27,
+
+    /// <summary>
+    /// ACH demand corporate trade exchange (CTX) credit
+    /// </summary>
+    [EnumStringValue('28')]
+    AchDemandCtxCredit = 28,
+
+    /// <summary>
+    /// ACH demand corporate trade exchange (CTX) debit
+    /// </summary>
+    [EnumStringValue('29')]
+    AchDemandCtxDebit = 29,
+
+    /// <summary>
+    /// Credit transfer (non-SEPA)
+    /// </summary>
+    [EnumStringValue('30')]
+    CreditTransferNonSEPA = 30,
+
+    /// <summary>
+    /// Debit transfer (non-SEPA)
+    /// </summary>
+    [EnumStringValue('31')]
+    DebitTransferNonSEPA = 31,
+
+    /// <summary>
+    /// ACH demand cash concentration/disbursement plus (CCD+)
+    /// </summary>
+    [EnumStringValue('32')]
+    AchDemandCcdPlus = 32,
+
+    /// <summary>
+    /// ACH demand cash concentration/disbursement plus (CCD+)
+    /// </summary>
+    [EnumStringValue('33')]
+    AchDemandCcdPlusDuplicate = 33,
+
+    /// <summary>
+    /// ACH prearranged payment and deposit (PPD)
+    /// </summary>
+    [EnumStringValue('34')]
+    AchPrearrangedPaymentDepositPpd = 34,
+
+    /// <summary>
+    /// ACH savings cash concentration/disbursement (CCD) credit
+    /// </summary>
+    [EnumStringValue('35')]
+    AchSavingsCcdCredit = 35,
+
+    /// <summary>
+    /// ACH savings cash concentration/disbursement (CCD) debit
+    /// </summary>
+    [EnumStringValue('36')]
+    AchSavingsCcdDebit = 36,
+
+    /// <summary>
+    /// ACH savings corporate trade payment (CTP) credit
+    /// </summary>
+    [EnumStringValue('37')]
+    AchSavingsCtpCredit = 37,
+
+    /// <summary>
+    /// ACH savings corporate trade payment (CTP) debit
+    /// </summary>
+    [EnumStringValue('38')]
+    AchSavingsCtpDebit = 38,
+
+    /// <summary>
+    /// ACH savings corporate trade exchange (CTX) credit
+    /// </summary>
+    [EnumStringValue('39')]
+    AchSavingsCtxCredit = 39,
+
+    /// <summary>
+    /// ACH savings corporate trade exchange (CTX) debit
+    /// </summary>
+    [EnumStringValue('40')]
+    AchSavingsCtxDebit = 40,
+
+    /// <summary>
+    /// ACH savings cash concentration/disbursement plus (CCD+)
+    /// </summary>
+    [EnumStringValue('41')]
+    AchSavingsCcdPlus = 41,
+
+    /// <summary>
+    /// Payment to bank account
+    /// </summary>
+    [EnumStringValue('42')]
     PaymentToBankAccount = 42,
 
     /// <summary>
-    /// Bankkkarte, Kreditkarte
-    /// Available in: Basic, Extended
+    /// ACH savings cash concentration/disbursement plus (CCD+)
     /// </summary>
+    [EnumStringValue('43')]
+    AchSavingsCcdPlusDuplicate = 43,
+
+    /// <summary>
+    /// Accepted bill of exchange
+    /// </summary>
+    [EnumStringValue('44')]
+    AcceptedBillOfExchange = 44,
+
+    /// <summary>
+    /// Referenced home-banking credit transfer
+    /// </summary>
+    [EnumStringValue('45')]
+    ReferencedHomeBankingCreditTransfer = 45,
+
+    /// <summary>
+    /// Interbank debit transfer
+    /// </summary>
+    [EnumStringValue('46')]
+    InterbankDebitTransfer = 46,
+
+    /// <summary>
+    /// Home-banking debit transfer
+    /// </summary>
+    [EnumStringValue('47')]
+    HomeBankingDebitTransfer = 47,
+
+    /// <summary>
+    /// Bank card (Use for all payment cards)
+    /// </summary>
+    [EnumStringValue('48')]
     BankCard = 48,
 
     /// <summary>
-    /// Lastschriftverfahren
-    ///
-    /// Available in: Basic, Extended
-    /// /// </summary>
+    /// Direct debit
+    /// </summary>
+    [EnumStringValue('49')]
     DirectDebit = 49,
 
     /// <summary>
-    /// Available in: Basic, Extended
+    /// Payment by postgiro
     /// </summary>
-    StandingAgreement = 57,
-
+    [EnumStringValue('50')]
+    PaymentByPostgiro = 50,
 
     /// <summary>
-    /// Available in: Basic, Extended
+    /// FR, norme 6 97-Telereglement CFONB (French Organisation for Banking Standards) -
+    /// Option A A French standard procedure that allows a debtor to pay an amount
+    /// due to a creditor. The creditor will forward it to its bank, which
+    /// will collect the money on the bank account of the debtor.
     /// </summary>
+    [EnumStringValue('51')]
+    FrCfonb = 51,
+
+    /// <summary>
+    /// Urgent commercial payment
+    /// </summary>
+    [EnumStringValue('52')]
+    UrgentCommercialPayment = 52,
+
+    /// <summary>
+    /// Urgent Treasury Payment
+    /// </summary>
+    [EnumStringValue('53')]
+    UrgentTreasuryPayment = 53,
+
+    /// <summary>
+    /// Credit card
+    /// </summary>
+    [EnumStringValue('54')]
+    CreditCard = 54,
+
+    /// <summary>
+    /// Debit card
+    /// </summary>
+    [EnumStringValue('55')]
+    DebitCard = 55,
+
+    /// <summary>
+    /// Bankgiro
+    /// </summary>
+    [EnumStringValue('56')]
+    Bankgiro = 56,
+
+    /// <summary>
+    /// Standing agreement (Contractual payment means)
+    /// </summary>
+    [EnumStringValue('57')]
+    StandingAgreement = 57,
+
+    /// <summary>
+    /// SEPA credit transfer (SEPA)
+    /// </summary>
+    [EnumStringValue('58')]
     SEPACreditTransfer = 58,
 
     /// <summary>
-    /// Available in: Basic, Extended
+    /// SEPA direct debit (SEPA)
     /// </summary>
+    [EnumStringValue('59')]
     SEPADirectDebit = 59,
 
     /// <summary>
-    /// Ausgleich zwischen Partnern.
-    /// Beträge, die zwei Partner sich gegenseitig schulden werden ausgeglichen um unnütze Zahlungen zu vermeiden.
-    /// Available in: Basic, Extended
+    /// Promissory note
     /// </summary>
-    ClearingBetweenPartners = 97
-  );
+    [EnumStringValue('60')]
+    PromissoryNote = 60,
 
-  TZUGFeRDPaymentMeansTypeCodesExtensions = class
-  public
-    class function FromString(const s: string): TZUGFeRDPaymentMeansTypeCodes;
-    class function EnumToString(t: TZUGFeRDPaymentMeansTypeCodes): string;
-  end;
+    /// <summary>
+    /// Promissory note signed by the debtor
+    /// </summary>
+    [EnumStringValue('61')]
+    PromissoryNoteSignedByDebtor = 61,
+
+    /// <summary>
+    /// Promissory note signed by the debtor and endorsed by a bank
+    /// </summary>
+    [EnumStringValue('62')]
+    PromissoryNoteSignedByDebtorEndorsedByBank = 62,
+
+    /// <summary>
+    /// Payment by an unconditional promise in writing made by the debtor
+    /// to another person, signed by the debtor and endorsed by
+    /// a third party, engaging to pay on demand or at a fixed
+    /// or determinable future time a sum certain in money, to order
+    /// or to bearer.
+    /// </summary>
+    [EnumStringValue('63')]
+    PromissoryNoteSignedByDebtorEndorsedByOther = 63,
+
+    /// <summary>
+    /// Promissory note signed by a bank
+    /// </summary>
+    [EnumStringValue('64')]
+    PromissoryNoteSignedByBank = 64,
+
+    /// <summary>
+    /// Payment by an unconditional promise in writing made by the bank
+    /// to another person, signed by the bank and endorsed by another
+    /// bank, engaging to pay on demand or at a fixed or determinable
+    /// future time a sum certain in money, to order or to bearer.
+    /// </summary>
+    [EnumStringValue('65')]
+    PromissoryNoteSignedByBankEndorsedByOther = 65,
+
+    /// <summary>
+    /// Promissory note signed by a third party
+    /// </summary>
+    [EnumStringValue('66')]
+    PromissoryNoteSignedByThirdParty = 66,
+
+    /// <summary>
+    /// Payment by an unconditional promise in writing made by a
+    /// third party to another person, signed by the third party
+    /// and endorsed by a bank, engaging to pay on demand or at
+    /// a fixed or determinable future time a sum certain in money,
+    /// to order or to bearer.
+    /// </summary>
+    [EnumStringValue('67')]
+    PromissoryNoteSignedByThirdPartyEndorsedByOther = 67,
+
+    /// <summary>
+    /// Online payment service
+    /// </summary>
+    [EnumStringValue('68')]
+    OnlinePaymentService = 68,
+
+    /// <summary>
+    /// Transfer Advice
+    /// </summary>
+    [EnumStringValue('69')]
+    TransferAdvice = 69,
+
+    /// <summary>
+    /// Bill drawn by the creditor on the debtor
+    /// </summary>
+    [EnumStringValue('70')]
+    BillDrawnByCreditorOnDebtor = 70,
+
+    /// <summary>
+    /// Bill drawn by the creditor on a bank
+    /// </summary>
+    [EnumStringValue('74')]
+    BillDrawnByCreditorOnBank = 74,
+
+    /// <summary>
+    /// Bill drawn by the creditor, endorsed by another bank
+    /// </summary>
+    [EnumStringValue('75')]
+    BillDrawnByCreditorEndorsedByAnotherBank = 75,
+
+    /// <summary>
+    /// Bill drawn by the creditor on a bank and endorsed by a third party.
+    /// </summary>
+    [EnumStringValue('76')]
+    BillDrawnByCreditorOnBankEndorsedByOther = 76,
+
+    /// <summary>
+    /// Bill drawn by the creditor on a third party
+    /// </summary>
+    [EnumStringValue('77')]
+    BillDrawnByCreditorOnThirdParty = 77,
+
+    /// <summary>
+    /// Bill drawn by creditor on third party, accepted and endorsed by bank.
+    /// </summary>
+    [EnumStringValue('78')]
+    BillDrawnByCreditorOnThirdPartyAccepted = 78,
+
+    /// <summary>
+    /// Not transferable banker's draft
+    /// </summary>
+    [EnumStringValue('91')]
+    NotTransferableBankersDraft = 91,
+
+    /// <summary>
+    /// Not transferable local cheque
+    /// </summary>
+    [EnumStringValue('92')]
+    NotTransferableLocalCheque = 92,
+
+    /// <summary>
+    /// Reference giro
+    /// </summary>
+    [EnumStringValue('93')]
+    ReferenceGiro = 93,
+
+    /// <summary>
+    /// Urgent giro
+    /// </summary>
+    [EnumStringValue('94')]
+    UrgentGiro = 94,
+
+    /// <summary>
+    /// Free format giro
+    /// </summary>
+    [EnumStringValue('95')]
+    FreeFormatGiro = 95,
+
+    /// <summary>
+    /// Requested method for payment was not used
+    /// </summary>
+    [EnumStringValue('96')]
+    RequestedMethodForPaymentNotUsed = 96,
+
+    /// <summary>
+    /// Clearing between partners
+    /// </summary>
+    [EnumStringValue('97')]
+    ClearingBetweenPartners = 97,
+
+    /// <summary>
+    /// JP, Electronically Recorded Monetary Claims
+    /// </summary>
+    [EnumStringValue('98')]
+    ElectronicallyRecordedMonetaryClaimsJP = 98,
+
+    /// <summary>
+    /// Mutually defined
+    /// </summary>
+    [EnumStringValue('ZZZ')]
+    MutuallyDefined = 999,
+
+
+    /// <summary>
+    /// Unknown value
+    /// </summary>
+    Unknown
+    {.DefinitionEnd}
+  );
 
 implementation
 
-class function TZUGFeRDPaymentMeansTypeCodesExtensions.FromString(const s: string): TZUGFeRDPaymentMeansTypeCodes;
+procedure Map (EnumValue: TZUGFeRDPaymentMeansTypeCodes; StringValue: string); inline;
 begin
-  if SameText(s,'1') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.NotDefined
-  else
-  if SameText(s,'3') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.AutomatedClearingHouseDebit
-  else
-  if SameText(s,'10') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.InCash
-  else
-  if SameText(s,'20') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.Cheque
-  else
-  if SameText(s,'30') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.CreditTransfer
-  else
-  if SameText(s,'31') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.DebitTransfer
-  else
-  if SameText(s,'42') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.PaymentToBankAccount
-  else
-  if SameText(s,'48') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.BankCard
-  else
-  if SameText(s,'49') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.DirectDebit
-  else
-  if SameText(s,'57') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.StandingAgreement
-  else
-  if SameText(s,'58') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.SEPACreditTransfer
-  else
-  if SameText(s,'59') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.SEPADirectDebit
-  else
-  if SameText(s,'97') then
-    Result := TZUGFeRDPaymentMeansTypeCodes.ClearingBetweenPartners
-  else
-    Result := TZUGFeRDPaymentMeansTypeCodes.Unknown
+  TEnumExtensions<TZUGFeRDPaymentMeansTypeCodes>.RegisterMapping(EnumValue, StringValue)
 end;
 
-class function TZUGFeRDPaymentMeansTypeCodesExtensions.EnumToString(t: TZUGFeRDPaymentMeansTypeCodes): string;
+procedure InitMapping;
 begin
-  Result := IntToStr(Integer(t));
+  {.MapStart}
+  // Mapping generated by PSDelphiDefinitionMapper
+  Map(InstrumentNotDefined,                            '1');
+  Map(AchCredit,                                       '2');
+  Map(AchDebit,                                        '3');
+  Map(AchDemandDebitReversal,                          '4');
+  Map(AchDemandCreditReversal,                         '5');
+  Map(AchDemandCredit,                                 '6');
+  Map(AchDemandDebit,                                  '7');
+  Map(Hold,                                            '8');
+  Map(NationalOrRegionalClearing,                      '9');
+  Map(InCash,                                          '10');
+  Map(AchSavingsCreditReversal,                        '11');
+  Map(AchSavingsDebitReversal,                         '12');
+  Map(AchSavingsCredit,                                '13');
+  Map(AchSavingsDebit,                                 '14');
+  Map(BookentryCredit,                                 '15');
+  Map(BookentryDebit,                                  '16');
+  Map(AchDemandCcdCredit,                              '17');
+  Map(AchDemandCcdDebit,                               '18');
+  Map(AchDemandCtpCredit,                              '19');
+  Map(Cheque,                                          '20');
+  Map(BankersDraft,                                    '21');
+  Map(CertifiedBankersDraft,                           '22');
+  Map(BankCheque,                                      '23');
+  Map(BillOfExchangeAwaitingAcceptance,                '24');
+  Map(CertifiedCheque,                                 '25');
+  Map(LocalCheque,                                     '26');
+  Map(AchDemandCtpDebit,                               '27');
+  Map(AchDemandCtxCredit,                              '28');
+  Map(AchDemandCtxDebit,                               '29');
+  Map(CreditTransferNonSEPA,                           '30');
+  Map(DebitTransferNonSEPA,                            '31');
+  Map(AchDemandCcdPlus,                                '32');
+  Map(AchDemandCcdPlusDuplicate,                       '33');
+  Map(AchPrearrangedPaymentDepositPpd,                 '34');
+  Map(AchSavingsCcdCredit,                             '35');
+  Map(AchSavingsCcdDebit,                              '36');
+  Map(AchSavingsCtpCredit,                             '37');
+  Map(AchSavingsCtpDebit,                              '38');
+  Map(AchSavingsCtxCredit,                             '39');
+  Map(AchSavingsCtxDebit,                              '40');
+  Map(AchSavingsCcdPlus,                               '41');
+  Map(PaymentToBankAccount,                            '42');
+  Map(AchSavingsCcdPlusDuplicate,                      '43');
+  Map(AcceptedBillOfExchange,                          '44');
+  Map(ReferencedHomeBankingCreditTransfer,             '45');
+  Map(InterbankDebitTransfer,                          '46');
+  Map(HomeBankingDebitTransfer,                        '47');
+  Map(BankCard,                                        '48');
+  Map(DirectDebit,                                     '49');
+  Map(PaymentByPostgiro,                               '50');
+  Map(FrCfonb,                                         '51');
+  Map(UrgentCommercialPayment,                         '52');
+  Map(UrgentTreasuryPayment,                           '53');
+  Map(CreditCard,                                      '54');
+  Map(DebitCard,                                       '55');
+  Map(Bankgiro,                                        '56');
+  Map(StandingAgreement,                               '57');
+  Map(SEPACreditTransfer,                              '58');
+  Map(SEPADirectDebit,                                 '59');
+  Map(PromissoryNote,                                  '60');
+  Map(PromissoryNoteSignedByDebtor,                    '61');
+  Map(PromissoryNoteSignedByDebtorEndorsedByBank,      '62');
+  Map(PromissoryNoteSignedByDebtorEndorsedByOther,     '63');
+  Map(PromissoryNoteSignedByBank,                      '64');
+  Map(PromissoryNoteSignedByBankEndorsedByOther,       '65');
+  Map(PromissoryNoteSignedByThirdParty,                '66');
+  Map(PromissoryNoteSignedByThirdPartyEndorsedByOther, '67');
+  Map(OnlinePaymentService,                            '68');
+  Map(TransferAdvice,                                  '69');
+  Map(BillDrawnByCreditorOnDebtor,                     '70');
+  Map(BillDrawnByCreditorOnBank,                       '74');
+  Map(BillDrawnByCreditorEndorsedByAnotherBank,        '75');
+  Map(BillDrawnByCreditorOnBankEndorsedByOther,        '76');
+  Map(BillDrawnByCreditorOnThirdParty,                 '77');
+  Map(BillDrawnByCreditorOnThirdPartyAccepted,         '78');
+  Map(NotTransferableBankersDraft,                     '91');
+  Map(NotTransferableLocalCheque,                      '92');
+  Map(ReferenceGiro,                                   '93');
+  Map(UrgentGiro,                                      '94');
+  Map(FreeFormatGiro,                                  '95');
+  Map(RequestedMethodForPaymentNotUsed,                '96');
+  Map(ClearingBetweenPartners,                         '97');
+  Map(ElectronicallyRecordedMonetaryClaimsJP,          '98');
+  Map(MutuallyDefined,                                 'ZZZ');
+  Map(Unknown,                                         'Unknown');
+{.MapEnd}
 end;
 
+Initialization
+  InitMapping;
 end.
+
+

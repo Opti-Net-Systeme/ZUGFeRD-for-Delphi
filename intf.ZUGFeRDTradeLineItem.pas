@@ -41,15 +41,18 @@ uses
   intf.ZUGFeRDTaxCategoryCodes,
   intf.ZUGFeRDDeliveryNoteReferencedDocument,
   intf.ZUGFeRDBuyerOrderReferencedDocument,
+  intf.ZUGFeRDSellerOrderReferencedDocument,
   intf.ZUGFeRDAccountingAccountTypeCodes,
-  intf.ZUGFeRDSpecialServiceDescriptionCodes,
-  intf.ZUGFeRDAllowanceOrChargeIdentificationCodes,
+  intf.ZUGFeRDChargeReasonCodes,
+  intf.ZUGFeRDAllowanceReasonCodes,
   intf.ZUGFeRDDesignatedProductClassification,
   intf.ZUGFeRDDesignatedProductClassificationClassCodes,
   intf.ZUGFeRDCountryCodes,
   intf.ZUGFeRDAdditionalReferencedDocumentTypeCodes,
   intf.ZUGFeRDIncludedReferencedProduct,
-  intf.ZUGFeRDParty
+  intf.ZUGFeRDParty,
+  intf.ZUGFeRDLineStatusCodes,
+  intf.ZUGFeRDLineStatusReasonCodes
   ;
 
 type
@@ -57,23 +60,23 @@ type
   ///  Structure holding item information
   ///
   /// Please note that you might use the object that is returned from InvoiceDescriptor.AddTradeLineItem(...) and use it
-  /// to e.g. add an allowance charge using lineItem.AddTradeAllowanceCharge(...)
+  /// to e.g. add an allowance charge using lineItem.AddTradeAllowance(...)
   /// </summary>
   TZUGFeRDTradeLineItem = class
   private
-    FBilledQuantity: Double;
-    FChargeFreeQuantity: ZUGFeRDNullable<Double>;
-    FPackageQuantity: ZUGFeRDNullable<Double>;
-    FNetQuantity: ZUGFeRDNullable<Double>;
-    FGrossQuantity: ZUGFeRDNullable<Double>;
+    FBilledQuantity: Currency;
+    FChargeFreeQuantity: ZUGFeRDNullable<Currency>;
+    FPackageQuantity: ZUGFeRDNullable<Currency>;
+    FNetQuantity: ZUGFeRDNullable<Currency>;
+    FGrossQuantity: ZUGFeRDNullable<Currency>;
     FName: string;
     FContractReferencedDocument: TZUGFeRDContractReferencedDocument;
     FReceivableSpecifiedTradeAccountingAccounts: TObjectList<TZUGFeRDReceivableSpecifiedTradeAccountingAccount>;
     FAdditionalReferencedDocuments: TObjectList<TZUGFeRDAdditionalReferencedDocument>;
     FIncludedReferencedProducts: TObjectList<TZUGFeRDIncludedReferencedProduct>;
-    FUnitCode: TZUGFeRDQuantityCodes;
-    FChargeFreeUnitCode: TZUGFeRDQuantityCodes;
-    FPackageUnitCode: TZUGFeRDQuantityCodes;
+    FUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
+    FChargeFreeUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
+    FPackageUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
     FNetUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
     FGrossUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
     FBillingPeriodStart: ZUGFeRDNullable<TDateTime>;
@@ -89,10 +92,15 @@ type
     FUltimateShipToTaxRegistration: TObjectList<TZUGFeRDTaxRegistration>;
     FUltimateShipToElectronicAddress: TZUGFeRDElectronicAddress;
     FSellerAssignedID: string;
-    FTradeAllowanceCharges: TObjectList<TZUGFeRDTradeAllowanceCharge>;
-    FSpecifiedTradeAllowanceCharges : TObjectList<TZUGFeRDTradeAllowanceCharge>;
-    FTaxPercent: Double;
-    FTaxType: TZUGFeRDTaxTypes;
+    FIndustryAssignedID: string;
+    FModelID: string;
+    FBatchID: string;
+    FBrandName: string;
+    FModelName: string;
+    FTradeAllowanceCharges: TObjectList<TZUGFeRDAbstractTradeAllowanceCharge>;
+    FSpecifiedTradeAllowanceCharges : TObjectList<TZUGFeRDAbstractTradeAllowanceCharge>;
+    FTaxPercent: Currency;
+    FTaxType: ZUGFeRDNullable<TZUGFeRDTaxTypes>;
     FTaxExemptionReason: string;
     FTaxExemptionReasonCode: ZUGFeRDNullable<TZUGFeRDTaxExemptionReasonCodes>;
     FBuyerAssignedID: string;
@@ -100,18 +108,19 @@ type
     FBillingPeriodEnd: ZUGFeRDNullable<TDateTime>;
     FDescription: string;
     FAssociatedDocument: TZUGFeRDAssociatedDocument;
-    FTaxCategoryCode: TZUGFeRDTaxCategoryCodes;
+    FTaxCategoryCode: ZUGFeRDNullable<TZUGFeRDTaxCategoryCodes>;
     FNetUnitPrice: ZUGFeRDNullable<Currency>;
-    FLineTotalAmount: ZUGFeRDNullable<Double>; // TZUGFeRDZUGFeRDNullable<Double>;
+    FLineTotalAmount: ZUGFeRDNullable<Currency>;
     FDeliveryNoteReferencedDocument: TZUGFeRDDeliveryNoteReferencedDocument;
     FGlobalID: TZUGFeRDGlobalID;
     FBuyerOrderReferencedDocument: TZUGFeRDBuyerOrderReferencedDocument;
+    FSellerOrderReferencedDocument: TZUGFeRDSellerOrderReferencedDocument;
     FGrossUnitPrice: ZUGFeRDNullable<Currency>;
   public
     /// <summary>
     /// Initialisiert ein neues, leeres Handelspositionsobjekt
     /// </summary>
-    constructor Create;
+    constructor Create (LineID: string);
     destructor Destroy; override;
 
     procedure AddAdditionalReferencedDocument(id: string;
@@ -133,7 +142,7 @@ type
       referenceTypeCode : IZUGFeRDNullableParam<TZUGFeRDReferenceTypeCodes> = Nil;
       attachmentBinaryObject : TStream = nil; filename : String = ''); overload;
 
-    procedure AddIncludedReferencedProduct(Name: String; UnitQuantity: ZUGFeRDNullable<Double>; UnitCode: TZUGFeRDQuantityCodes);
+    procedure AddIncludedReferencedProduct(Name: String; UnitQuantity: ZUGFeRDNullable<Currency>; UnitCode: TZUGFeRDQuantityCodes);
 
     /// <summary>
 		/// Adds an invoice line Buyer accounting reference. BT-133
@@ -152,28 +161,63 @@ type
     /// <param name="reason">Reason for the allowance or surcharge</param>
     /// <param name="reasonCodeCharge"></param>
     /// <param name="reasonCodeAllowance"></param>
-    procedure AddTradeAllowanceCharge(isDiscount: Boolean;
-      currency: TZUGFeRDCurrencyCodes; basisAmount, actualAmount: double;
+    procedure AddTradeAllowanceCharge(isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
       reason: string;
-      reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-      reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown); overload;
+      reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
 
     /// <summary>
     /// As an allowance or charge on item level, attaching it to the corresponding item.
     /// </summary>
-    /// <param name="isDiscount">Marks if its an allowance (true) or charge (false). Please note that the xml will present inversed values</param>
     /// <param name="currency">Currency of the allowance or surcharge</param>
     /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
     /// <param name="actualAmount">The actual allowance or surcharge amount</param>
     /// <param name="chargePercentage">Actual allowance or surcharge charge percentage</param>
     /// <param name="reason">Reason for the allowance or surcharge</param>
-    /// <param name="reasonCodeCharge"></param>
-    /// <param name="reasonCodeAllowance"></param>
-    procedure AddTradeAllowanceCharge(isDiscount: Boolean;
-      currency: TZUGFeRDCurrencyCodes; basisAmount, actualAmount: double;
-      chargePercentage : Currency; reason: string;
-      reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-      reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown); overload;
+    /// <param name="reasonCode">Reason code for the allowance or surcharge</param>
+    function AddTradeAllowance (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      chargePercentage: ZUGFeRDNullable<Currency>;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil): TZUGFeRDTradeLineItem; overload;
+
+    /// <summary>
+    /// As an allowance or charge on item level, attaching it to the corresponding item.
+    /// </summary>
+    /// <param name="currency">Currency of the allowance or surcharge</param>
+    /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
+    /// <param name="actualAmount">The actual allowance or surcharge amount</param>
+    /// <param name="chargePercentage">Actual allowance or surcharge charge percentage</param>
+    /// <param name="reason">Reason for the allowance or surcharge</param>
+    /// <param name="reasonCode">Reason code for the allowance or surcharge</param>
+    function AddTradeAllowance (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil): TZUGFeRDTradeLineItem; overload;
+
+    /// <summary>
+    /// As an allowance or charge on item level, attaching it to the corresponding item.
+    /// </summary>
+    /// <param name="currency">Currency of the allowance or surcharge</param>
+    /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
+    /// <param name="actualAmount">The actual allowance or surcharge amount</param>
+    /// <param name="chargePercentage">Actual allowance or surcharge charge percentage</param>
+    /// <param name="reason">Reason for the allowance or surcharge</param>
+    /// <param name="reasonCode">Reason code for the allowance or surcharge</param>
+    function AddTradeCharge (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      chargePercentage: ZUGFeRDNullable<Currency>;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil): TZUGFeRDTradeLineItem; overload;
+
+  /// <summary>
+    /// As an allowance or charge on item level, attaching it to the corresponding item.
+    /// </summary>
+    /// <param name="currency">Currency of the allowance or surcharge</param>
+    /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
+    /// <param name="actualAmount">The actual allowance or surcharge amount</param>
+    /// <param name="reason">Reason for the allowance or surcharge</param>
+    /// <param name="reasonCode">Reason code for the allowance or surcharge</param>
+    function AddTradeCharge (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil): TZUGFeRDTradeLineItem; overload;
 
     /// <summary>
     /// As an allowance or charge on total item price, attaching it to the corresponding item.
@@ -183,11 +227,10 @@ type
     /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
     /// <param name="actualAmount">The actual allowance or surcharge amount</param>
     /// <param name="reason">Reason for the allowance or surcharge</param>
-    procedure AddSpecifiedTradeAllowanceCharge(isDiscount: Boolean;
-      currency: TZUGFeRDCurrencyCodes; basisAmount, actualAmount: double;
+    procedure AddSpecifiedTradeAllowanceCharge (isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
       reason: string;
-      reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-      reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown); overload;
+      reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
 
     /// <summary>
     /// As an allowance or charge on total item price, attaching it to the corresponding item.
@@ -196,13 +239,44 @@ type
     /// <param name="currency">Currency of the allowance or surcharge</param>
     /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
     /// <param name="actualAmount">The actual allowance or surcharge amount</param>
-    /// <param name="chargePercentage">Actual allowance or surcharge charge percentage</param>
     /// <param name="reason">Reason for the allowance or surcharge</param>
-    procedure AddSpecifiedTradeAllowanceCharge(isDiscount: Boolean;
-      currency: TZUGFeRDCurrencyCodes; basisAmount, actualAmount: double;
-      chargePercentage : Currency; reason: string;
-      reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-      reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown); overload;
+    procedure AddSpecifiedTradeAllowance (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil); overload;
+
+    procedure AddSpecifiedTradeAllowance (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>;
+      actualAmount: Currency;
+      chargePercentage: ZUGFeRDNullable<Currency>;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil); overload;
+
+
+    /// <summary>
+    /// As an allowance or charge on total item price, attaching it to the corresponding item.
+    /// </summary>
+    /// <param name="currency">Currency of the allowance or surcharge</param>
+    /// <param name="basisAmount">Basis aount for the allowance or surcharge, typicalls the net amount of the item</param>
+    /// <param name="actualAmount">The actual allowance or surcharge amount</param>
+    /// <param name="reason">Reason for the allowance or surcharge</param>
+    procedure AddSpecifiedTradeCharge (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil); overload;
+
+    procedure AddSpecifiedTradeCharge (currency: TZUGFeRDCurrencyCodes;
+      basisAmount: ZUGFeRDNullable<Currency>;
+      actualAmount: Currency;
+      chargePercentage: ZUGFeRDNullable<Currency>;
+      reason: string; reasonCode : IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil); overload;
+
+    /// <summary>
+    /// Returns all specified trade allowances for the trade line item
+    /// </summary>
+    function GetSpecifiedTradeAllowances: TArray<TZUGFeRDTradeAllowance>;
+
+    /// <summary>
+    /// Returns all specified trade charges for the trade line item
+    /// </summary>
+    function GetSpecifiedTradeCharges: TArray<TZUGFeRDTradeCharge>;
 
     /// <summary>
 		/// Adds a product classification
@@ -211,7 +285,7 @@ type
 		/// <param name="classCode">Identifier of the item classification (optional)</param>
 		/// <param name="listID">Product classification name (optional)</param>
 		/// <param name="listVersionID">Version of product classification (optional)</param>
-    procedure AddDesignatedProductClassification(listID  : TZUGFeRDDesignatedProductClassificationClassCodes; listVersionID : String = ''; className : String = ''; classCode: string = '');
+    procedure AddDesignatedProductClassification(listID  : TZUGFeRDDesignatedProductClassificationClassCodes; listVersionID : String = ''; classCode: string = ''; className : String = '');
 
     /// <summary>
     /// Recipient of the delivered goods. This party is optional and is written in Extended profile only
@@ -223,7 +297,6 @@ type
     property ShipToTaxRegistration: TObjectList<TZUGFeRDTaxRegistration> read FShipToTaxRegistration;
     property ShipToElectronicAddress : TZUGFeRDElectronicAddress read FShipToElectronicAddress;
 
-
     /// <summary>
     /// Detailed information on the deviating final recipient. This party is optional and only relevant for Extended profile
     ///
@@ -234,19 +307,37 @@ type
     property UltimateShipToTaxRegistration: TObjectList<TZUGFeRDTaxRegistration> read FUltimateShipToTaxRegistration;
     property UltimateShipToElectronicAddress : TZUGFeRDElectronicAddress read FUltimateShipToElectronicAddress;
 
-    procedure SetContractReferencedDocument(contractReferencedId: string;
-      contractReferencedDate: IZUGFeRDNullableParam<TDateTime>);
+    function SetContractReferencedDocument(contractReferencedId: string; contractReferencedDate: IZUGFeRDNullableParam<TDateTime>; contractReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
 
-    procedure SetDeliveryNoteReferencedDocument(deliveryNoteId: string;
-      deliveryNoteDate: IZUGFeRDNullableParam<TDateTime>);
+    /// <summary>
+    /// The value given here refers to the superior line. In this way, a hierarchy tree of invoice items can be mapped.
+    ///
+    /// BT-X-304
+    /// </summary>
+    function SetParentLineId(parentLineId: string): TZUGFeRDTradeLineItem;
+
+    /// <summary>
+    /// Sets the status code and reason code for this trade line item
+    /// </summary>
+    /// <param name="lineStatusCode">The status code for this line</param>
+    /// <param name="lineStatusReasonCode">The reason code explaining the status</param>
+    function SetLineStatus(lineStatusCode: TZUGFeRDLineStatusCodes; lineStatusReasonCode: TZUGFeRDLineStatusReasonCodes): TZUGFeRDTradeLineItem;
+
+    /// <summary>
+    /// Sets the delivery note reference information for this trade line item. BG-X-83
+    /// Only available in Extended profile.
+    /// </summary>
+    /// <param name="deliveryNoteId">The identifier of the delivery note. BT-X-92</param>
+    /// <param name="deliveryNoteDate">The date of the delivery note. BT-X-94</param>
+    /// <param name="deliveryNoteReferencedLineId">The identifier of the delivery note item. BT-X-93</param>
+    function SetDeliveryNoteReferencedDocument(deliveryNoteId: string; deliveryNoteDate: IZUGFeRDNullableParam<TDateTime>; deliveryNoteReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
 
     /// <summary>
 		/// Please note that XRechnung/ FacturX allows a maximum of one such reference
     /// and will only output the referenced order line id
     /// but not issuer assigned id and date
 		/// </summary>
-    procedure SetOrderReferencedDocument(orderReferencedId: string;
-      orderReferencedDate: IZUGFeRDNullableParam<TDateTime>);
+    function SetOrderReferencedDocument(orderReferencedId: string; orderReferencedDate: IZUGFeRDNullableParam<TDateTime>; orderReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
   public
     /// <summary>
     /// The identification of articles based on a registered scheme
@@ -267,6 +358,31 @@ type
     property BuyerAssignedID: string read FBuyerAssignedID write FBuyerAssignedID;
 
     /// <summary>
+    /// An identifier, assigned by the Industry, for the item.
+    /// </summary>
+    property IndustryAssignedID: string read FIndustryAssignedID write FIndustryAssignedID;
+
+    /// <summary>
+    /// A unique model identifier for this item.
+    /// </summary>
+    property ModelID: string read FModelID write FModelID;
+
+    /// <summary>
+    /// A batch identifier for this item.
+    /// </summary>
+    property BatchID: string read FBatchID write FBatchID;
+
+    /// <summary>
+    /// The brand name, expressed as text, for this item.
+    /// </summary>
+    property BrandName: string read FBrandName write FBrandName;
+
+    /// <summary>
+    /// A group of business terms providing information about properties of the goods and services ordered.
+    /// </summary>
+    property Modelname: string read FModelName write FModelName;
+
+    /// <summary>
     /// An article’s name
     /// </summary>
     property Name: string read FName write FName;
@@ -282,23 +398,23 @@ type
     /// <summary>
     /// Invoiced quantity
     /// </summary>
-    property BilledQuantity: Double read FBilledQuantity write FBilledQuantity;
+    property BilledQuantity: Currency read FBilledQuantity write FBilledQuantity;
 
     /// <summary>
     /// No charge quantity  BT-X-46
     /// </summary>
-    property ChargeFreeQuantity: ZUGFeRDNullable<Double> read FChargeFreeQuantity write FChargeFreeQuantity;
+    property ChargeFreeQuantity: ZUGFeRDNullable<Currency> read FChargeFreeQuantity write FChargeFreeQuantity;
 
     /// <summary>
     /// Package quantity
     /// </summary>
-    property PackageQuantity: ZUGFeRDNullable<Double> read FPackageQuantity write FPackageQuantity;
+    property PackageQuantity: ZUGFeRDNullable<Currency> read FPackageQuantity write FPackageQuantity;
 
     /// <summary>
     /// Invoice line net amount including (!) trade allowance charges for the line item
     /// BT-131
     /// </summary>
-    property LineTotalAmount: ZUGFeRDNullable<Double> {TZUGFeRDZUGFeRDNullable<Double>} read FLineTotalAmount write FLineTotalAmount;
+    property LineTotalAmount: ZUGFeRDNullable<Currency> read FLineTotalAmount write FLineTotalAmount;
 
     /// <summary>
     /// Detailed information about the invoicing period
@@ -317,17 +433,17 @@ type
     /// <summary>
     /// he code valid for the invoiced goods sales tax category
     /// </summary>
-    property TaxCategoryCode: TZUGFeRDTaxCategoryCodes read FTaxCategoryCode write FTaxCategoryCode;
+    property TaxCategoryCode: ZUGFeRDNullable<TZUGFeRDTaxCategoryCodes> read FTaxCategoryCode write FTaxCategoryCode;
 
     /// <summary>
     /// Tax rate
     /// </summary>
-    property TaxPercent: Double read FTaxPercent write FTaxPercent;
+    property TaxPercent: Currency read FTaxPercent write FTaxPercent;
 
     /// <summary>
     /// Tax type
     /// </summary>
-    property TaxType: TZUGFeRDTaxTypes read FTaxType write FTaxType default TZUGFeRDTaxTypes.VAT;
+    property TaxType: ZUGFeRDNullable<TZUGFeRDTaxTypes> read FTaxType write FTaxType;
 
     /// <summary>
     /// Exemption Reason Text for no Tax
@@ -354,7 +470,7 @@ type
     /// optional, if filled and if *Gross*UnitPrice is present then it should be equal to GrossQuantity
     ///  BT-149
     /// </summary>
-    property NetQuantity: ZUGFeRDNullable<Double> read FNetQuantity write FNetQuantity;
+    property NetQuantity: ZUGFeRDNullable<Currency> read FNetQuantity write FNetQuantity;
 
     /// <summary>
     /// Net quantity unit of measure code
@@ -373,7 +489,7 @@ type
     /// if *Gross*UnitPrice is present and NetQuantity is filled, should be equal to NetQuantity
     /// BT-149-1
     /// </summary>
-    property GrossQuantity: ZUGFeRDNullable<Double> read FGrossQuantity write FGrossQuantity;
+    property GrossQuantity: ZUGFeRDNullable<Currency> read FGrossQuantity write FGrossQuantity;
 
     /// <summary>
     /// Gross quantity unit of measure code
@@ -386,17 +502,17 @@ type
     /// Item Base Quantity Unit Code
     /// BT-130
     /// </summary>
-    property UnitCode: TZUGFeRDQuantityCodes read FUnitCode write FUnitCode;
+    property UnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes> read FUnitCode write FUnitCode;
 
     /// <summary>
     /// Charge Free Quantity Unit Code
     /// </summary>
-    property ChargeFreeUnitCode: TZUGFeRDQuantityCodes read FChargeFreeUnitCode write FChargeFreeUnitCode;
+    property ChargeFreeUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes> read FChargeFreeUnitCode write FChargeFreeUnitCode;
 
     /// <summary>
     /// Package Quantity Unit Code
     /// </summary>
-    property PackageUnitCode: TZUGFeRDQuantityCodes read FPackageUnitCode write FPackageUnitCode;
+    property PackageUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes> read FPackageUnitCode write FPackageUnitCode;
 
     /// <summary>
     /// Identifier of the invoice line item
@@ -412,6 +528,13 @@ type
     /// Details of the associated order
     /// </summary>
     property BuyerOrderReferencedDocument: TZUGFeRDBuyerOrderReferencedDocument read FBuyerOrderReferencedDocument write FBuyerOrderReferencedDocument;
+
+    /// <summary>
+    /// Details of the associated order confirmation (seller's order)
+    ///
+    /// BT-X (item level)
+    /// </summary>
+    property SellerOrderReferencedDocument: TZUGFeRDSellerOrderReferencedDocument read FSellerOrderReferencedDocument write FSellerOrderReferencedDocument;
 
     /// <summary>
     /// Detailed information about the corresponding delivery note
@@ -438,12 +561,12 @@ type
     /// <summary>
     /// A group of business terms providing information about the applicable surcharges or discounts on the total amount of the invoice
     /// </summary>
-    property TradeAllowanceCharges: TObjectList<TZUGFeRDTradeAllowanceCharge> read FTradeAllowanceCharges write FTradeAllowanceCharges;
+    property TradeAllowanceCharges: TObjectList<TZUGFeRDAbstractTradeAllowanceCharge> read FTradeAllowanceCharges write FTradeAllowanceCharges;
 
     /// <summary>
     /// A group of business terms providing information about the applicable surcharges or discounts on the total amount of the invoice item
     /// </summary>
-    property SpecifiedTradeAllowanceCharges : TObjectList<TZUGFeRDTradeAllowanceCharge> read FSpecifiedTradeAllowanceCharges write FSpecifiedTradeAllowanceCharges;
+    property SpecifiedTradeAllowanceCharges : TObjectList<TZUGFeRDAbstractTradeAllowanceCharge> read FSpecifiedTradeAllowanceCharges write FSpecifiedTradeAllowanceCharges;
 
 
     /// <summary>
@@ -473,13 +596,14 @@ type
 
 implementation
 
-constructor TZUGFeRDTradeLineItem.Create;
+constructor TZUGFeRDTradeLineItem.Create (LineId: String);
 begin
-  inherited;
+  inherited Create;
   FGlobalID := TZUGFeRDGlobalID.Create;
   FNetUnitPrice:= 0.0;
-  FGrossUnitPrice:= 0.0;
-  FAssociatedDocument:= nil;
+  FGrossUnitPrice.ClearValue;
+  FAssociatedDocument:= TZUGFeRDAssociatedDocument.Create(LineId);
+  FTaxType:= TZUGFeRDTaxTypes.VAT; // Default Value
   FBillingPeriodStart.ClearValue;
   FShipTo:= nil;//TZUGFeRDParty.Create;
   FShipToContact:= nil;//TZUGFeRDContact.Create;
@@ -490,12 +614,13 @@ begin
   FUltimateShipToTaxRegistration:= TObjectList<TZUGFeRDTaxRegistration>.Create;
   FUltimateShipToElectronicAddress:= TZUGFeRDElectronicAddress.Create;
   FBuyerOrderReferencedDocument:= nil;//TZUGFeRDBuyerOrderReferencedDocument.Create;
+  FSellerOrderReferencedDocument:= nil;//TZUGFeRDSellerOrderReferencedDocument.Create;
   FDeliveryNoteReferencedDocument:= nil;//TZUGFeRDDeliveryNoteReferencedDocument.Create;
   FContractReferencedDocument:= nil;//TZUGFeRDContractReferencedDocument.Create;
   FAdditionalReferencedDocuments:= TObjectList<TZUGFeRDAdditionalReferencedDocument>.Create;
   FIncludedReferencedProducts:= TObjectList<TZUGFeRDIncludedReferencedProduct>.Create;
-  FTradeAllowanceCharges:= TObjectList<TZUGFeRDTradeAllowanceCharge>.Create;
-  FSpecifiedTradeAllowanceCharges := TObjectList<TZUGFeRDTradeAllowanceCharge>.Create;
+  FTradeAllowanceCharges:= TObjectList<TZUGFeRDAbstractTradeAllowanceCharge>.Create;
+  FSpecifiedTradeAllowanceCharges := TObjectList<TZUGFeRDAbstractTradeAllowanceCharge>.Create;
   FReceivableSpecifiedTradeAccountingAccounts:= TObjectList<TZUGFeRDReceivableSpecifiedTradeAccountingAccount>.Create;
   FApplicableProductCharacteristics := TObjectList<TZUGFeRDApplicableProductCharacteristic>.Create;
   FDesignedProductClassifications:= TObjectList<TZUGFeRDDesignatedProductClassification>.Create;
@@ -514,6 +639,7 @@ begin
   if Assigned(FUltimateShipToTaxRegistration          ) then begin FUltimateShipToTaxRegistration.Free; FUltimateShipToTaxRegistration := nil; end;
   if Assigned(FUltimateShipToElectronicAddress        ) then begin FUltimateShipToElectronicAddress.Free; FUltimateShipToElectronicAddress := nil; end;
   if Assigned(FBuyerOrderReferencedDocument) then begin FBuyerOrderReferencedDocument.Free; FBuyerOrderReferencedDocument := nil; end;
+  if Assigned(FSellerOrderReferencedDocument) then begin FSellerOrderReferencedDocument.Free; FSellerOrderReferencedDocument := nil; end;
   if Assigned(FDeliveryNoteReferencedDocument) then begin FDeliveryNoteReferencedDocument.Free; FDeliveryNoteReferencedDocument := nil; end;
   if Assigned(FContractReferencedDocument) then begin FContractReferencedDocument.Free; FContractReferencedDocument := nil; end;
   if Assigned(FAdditionalReferencedDocuments) then begin FAdditionalReferencedDocuments.Free; FAdditionalReferencedDocuments := nil; end;
@@ -528,41 +654,102 @@ end;
 
 procedure TZUGFeRDTradeLineItem.AddTradeAllowanceCharge(
   isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes;
-  basisAmount: double; actualAmount: double;
-  reason: string; reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes;
-  reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes);
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string;
+  reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
 begin
-  FTradeAllowanceCharges.Add(TZUGFeRDTradeAllowanceCharge.Create);
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ChargeIndicator := not isDiscount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].Currency := currency;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ActualAmount := actualAmount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].BasisAmount := basisAmount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ChargePercentage := 0;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ReasonCodeAllowance := reasonCodeAllowance;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ReasonCodeCharge := reasonCodeCharge;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].Reason := reason;
+  if isDiscount then
+    AddTradeAllowance(currency, basisAmount, actualAmount, reason, reasonCode)
+  else
+    AddTradeCharge(currency, basisAmount, actualAmount, reason, nil)
 end;
 
-procedure TZUGFeRDTradeLineItem.AddTradeAllowanceCharge(
-  isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes;
-  basisAmount: double; actualAmount: double;
-  chargePercentage : Currency; reason: string;
-  reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes;
-  reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes);
+function TZUGFeRDTradeLineItem.AddTradeAllowance (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  chargePercentage: ZUGFeRDNullable<Currency>;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil): TZUGFeRDTradeLineItem;
+var
+  TradeAllowance: TZUGFeRDTradeAllowance;
 begin
-  FTradeAllowanceCharges.Add(TZUGFeRDTradeAllowanceCharge.Create);
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ChargeIndicator := not isDiscount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].Currency := currency;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ActualAmount := actualAmount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].BasisAmount := basisAmount;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ChargePercentage := chargePercentage;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ReasonCodeAllowance := reasonCodeAllowance;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].ReasonCodeCharge := reasonCodeCharge;
-  FTradeAllowanceCharges[FTradeAllowanceCharges.Count - 1].Reason := reason;
+  TradeAllowance:= TZUGFeRDTradeAllowance.Create;
+  TradeAllowance.Currency := currency;
+  TradeAllowance.ActualAmount := actualAmount;
+  TradeAllowance.BasisAmount := basisAmount;
+  TradeAllowance.ChargePercentage := chargePercentage;
+  TradeAllowance.ReasonCode := reasonCode;
+  TradeAllowance.Reason := reason;
+  FTradeAllowanceCharges.Add(TradeAllowance);
+  Result:= self;
 end;
 
-procedure TZUGFeRDTradeLineItem.SetDeliveryNoteReferencedDocument(
-  deliveryNoteId: string; deliveryNoteDate: IZUGFeRDNullableParam<TDateTime>);
+function TZUGFeRDTradeLineItem.AddTradeAllowance (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil): TZUGFeRDTradeLineItem;
+var
+  TradeAllowance: TZUGFeRDTradeAllowance;
+begin
+  TradeAllowance:= TZUGFeRDTradeAllowance.Create;
+  TradeAllowance.Currency := currency;
+  TradeAllowance.ActualAmount := actualAmount;
+  TradeAllowance.BasisAmount := basisAmount;
+  TradeAllowance.ReasonCode := reasonCode;
+  TradeAllowance.Reason := reason;
+  FTradeAllowanceCharges.Add(TradeAllowance);
+  Result:= self;
+end;
+
+function TZUGFeRDTradeLineItem.AddTradeCharge (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  chargePercentage: ZUGFeRDNullable<Currency>;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil): TZUGFeRDTradeLineItem;
+var
+  TradeCharge: TZUGFeRDTradeCharge;
+begin
+  TradeCharge:= TZUGFeRDTradeCharge.Create;
+  TradeCharge.Currency := currency;
+  TradeCharge.ActualAmount := actualAmount;
+  TradeCharge.BasisAmount := basisAmount;
+  TradeCharge.ChargePercentage := chargePercentage;
+  TradeCharge.ReasonCode := reasonCode;
+  TradeCharge.Reason := reason;
+  FTradeAllowanceCharges.Add(TradeCharge);
+  Result:= self;
+end;
+
+function TZUGFeRDTradeLineItem.AddTradeCharge (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil): TZUGFeRDTradeLineItem;
+var
+  TradeCharge: TZUGFeRDTradeCharge;
+begin
+  TradeCharge:= TZUGFeRDTradeCharge.Create;
+  TradeCharge.Currency := currency;
+  TradeCharge.ActualAmount := actualAmount;
+  TradeCharge.BasisAmount := basisAmount;
+  TradeCharge.ReasonCode := reasonCode;
+  TradeCharge.Reason := reason;
+  FTradeAllowanceCharges.Add(TradeCharge);
+  Result:= self;
+end;
+
+function TZUGFeRDTradeLineItem.SetParentLineId(parentLineId: string): TZUGFeRDTradeLineItem;
+begin
+  AssociatedDocument.ParentLineID:= parentLineId;
+  Result:= self
+end;
+
+function TZUGFeRDTradeLineItem.SetLineStatus(lineStatusCode: TZUGFeRDLineStatusCodes; lineStatusReasonCode: TZUGFeRDLineStatusReasonCodes): TZUGFeRDTradeLineItem;
+begin
+  AssociatedDocument.LineStatusCode:= lineStatusCode;
+  AssociatedDocument.LineStatusReasonCode:= lineStatusReasonCode;
+  Result:= Self
+end;
+
+function TZUGFeRDTradeLineItem.SetDeliveryNoteReferencedDocument(deliveryNoteId: string; deliveryNoteDate: IZUGFeRDNullableParam<TDateTime>; deliveryNoteReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
 begin
   if FDeliveryNoteReferencedDocument = nil then
     FDeliveryNoteReferencedDocument := TZUGFeRDDeliveryNoteReferencedDocument.Create;
@@ -570,7 +757,9 @@ begin
   begin
     ID := deliveryNoteId;
     IssueDateTime:= deliveryNoteDate;
+    LineID := deliveryNoteReferencedLineId;
   end;
+  Result:= self
 end;
 
 procedure TZUGFeRDTradeLineItem.AddAdditionalReferencedDocument(
@@ -580,10 +769,10 @@ begin
   FAdditionalReferencedDocuments.Add(TZUGFeRDAdditionalReferencedDocument.Create(true));
 
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].ID := id;
-  if date <= 0 then
+  if issueDateTime <= 0 then
     FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= Nil
   else
-    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= date;
+    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= issueDateTime;
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].ReferenceTypeCode := code;
 end;
 
@@ -594,22 +783,26 @@ procedure TZUGFeRDTradeLineItem.AddAdditionalReferencedDocument(id: string;
   attachmentBinaryObject : TStream = nil; filename : String = '');
 
 begin
-  FAdditionalReferencedDocuments.Add(TZUGFeRDAdditionalReferencedDocument.Create(true));
+  FAdditionalReferencedDocuments.Add(TZUGFeRDAdditionalReferencedDocument.Create(attachmentBinaryObject <> nil));
 
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].ReferenceTypeCode := referenceTypeCode;
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].ID := id;
-  if date <= 0 then
+  if issueDateTime <= 0 then
     FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= Nil
   else
-    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= date;
+    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].IssueDateTime:= issueDateTime;
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].Name := name;
-  FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].AttachmentBinaryObject.Clear;
-  FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].AttachmentBinaryObject.LoadFromStream(attachmentBinaryObject);
+  if attachmentBinaryObject <> nil then
+  begin
+    attachmentBinaryObject.Position := 0;
+    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].AttachmentBinaryObject.CopyFrom(attachmentBinaryObject, attachmentBinaryObject.Size);
+    FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].AttachmentBinaryObject.Position := 0;
+  end;
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].Filename := filename;
   FAdditionalReferencedDocuments[FAdditionalReferencedDocuments.Count - 1].TypeCode := typeCode;
 end;
 
-procedure TZUGFeRDTradeLineItem.AddIncludedReferencedProduct(Name: String; UnitQuantity: ZUGFeRDNullable<Double>; UnitCode: TZUGFeRDQuantityCodes);
+procedure TZUGFeRDTradeLineItem.AddIncludedReferencedProduct(Name: String; UnitQuantity: ZUGFeRDNullable<Currency>; UnitCode: TZUGFeRDQuantityCodes);
 begin
   FIncludedReferencedProducts.Add(TZUGFeRDIncludedReferencedProduct.Create);
   FIncludedReferencedProducts[FIncludedReferencedProducts.Count - 1].Name := Name;
@@ -617,8 +810,7 @@ begin
   FIncludedReferencedProducts[FIncludedReferencedProducts.Count - 1].UnitCode := UnitCode;
 end;
 
-procedure TZUGFeRDTradeLineItem.SetOrderReferencedDocument(
-  orderReferencedId: string; orderReferencedDate: IZUGFeRDNullableParam<TDateTime>);
+function TZUGFeRDTradeLineItem.SetOrderReferencedDocument(orderReferencedId: string; orderReferencedDate: IZUGFeRDNullableParam<TDateTime>; orderReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
 begin
   if FBuyerOrderReferencedDocument = nil then
     FBuyerOrderReferencedDocument := TZUGFeRDBuyerOrderReferencedDocument.Create;
@@ -626,26 +818,29 @@ begin
   begin
     ID := orderReferencedId;
     IssueDateTime:= orderReferencedDate;
+    LineID := orderReferencedLineId;
   end;
+  Result:= self;
 end;
 
-procedure TZUGFeRDTradeLineItem.SetContractReferencedDocument(
-  contractReferencedId: string; contractReferencedDate: IZUGFeRDNullableParam<TDateTime>);
+function TZUGFeRDTradeLineItem.SetContractReferencedDocument(contractReferencedId: string; contractReferencedDate: IZUGFeRDNullableParam<TDateTime>; contractReferencedLineId: string = ''): TZUGFeRDTradeLineItem;
 begin
   if FContractReferencedDocument = nil then
-    FContractReferencedDocument := ContractReferencedDocument.Create;
+    FContractReferencedDocument := TZUGFeRDContractReferencedDocument.Create;
   with FContractReferencedDocument do
   begin
     ID := contractReferencedId;
     IssueDateTime:= contractReferencedDate;
+    LineID := contractReferencedLineId;
   end;
+  Result:= self
 end;
 
 procedure TZUGFeRDTradeLineItem.AddDesignatedProductClassification(
   listID:  TZUGFeRDDesignatedProductClassificationClassCodes;
   listVersionID: String;
-  className : String;
-  classCode: string
+  classCode: string;
+  className : String
 );
 begin
   DesignedProductClassifications.Add(TZUGFeRDDesignatedProductClassification.Create);
@@ -662,42 +857,127 @@ begin
   with FReceivableSpecifiedTradeAccountingAccounts[FReceivableSpecifiedTradeAccountingAccounts.Count - 1] do
   begin
     TradeAccountID := AccountID;
-    TradeAccountTypeCode := AccountTypeCode.Value;
+    if AccountTypeCode <> nil then
+      TradeAccountTypeCode := AccountTypeCode.Value;
   end;
 end;
 
 procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeAllowanceCharge(
-  isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes; basisAmount,
-  actualAmount: double; chargePercentage: Currency; reason: string;
-  reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-  reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown);
+  isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string;
+  reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
 begin
-  FSpecifiedTradeAllowanceCharges.Add(TZUGFeRDTradeAllowanceCharge.Create);
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ChargeIndicator := not isDiscount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].Currency := currency;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ActualAmount := actualAmount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].BasisAmount := basisAmount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ChargePercentage := chargePercentage;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ReasonCodeAllowance := reasonCodeAllowance;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ReasonCodeCharge := reasonCodeCharge;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].Reason := reason;
+  if isDiscount then
+    AddSpecifiedTradeAllowance(currency, basisAmount, actualAmount, reason, reasonCode)
+  else
+    AddSpecifiedTradeCharge(currency, basisAmount, actualAmount, reason)
 end;
 
-procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeAllowanceCharge(
-  isDiscount: Boolean; currency: TZUGFeRDCurrencyCodes; basisAmount,
-  actualAmount: double; reason: string;
-  reasonCodeCharge : TZUGFeRDSpecialServiceDescriptionCodes = TZUGFeRDSpecialServiceDescriptionCodes.Unknown;
-  reasonCodeAllowance : TZUGFeRDAllowanceOrChargeIdentificationCodes = TZUGFeRDAllowanceOrChargeIdentificationCodes.Unknown);
+procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeAllowance (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
+var
+  TradeAllowance: TZUGFeRDTradeAllowance;
 begin
-  FSpecifiedTradeAllowanceCharges.Add(TZUGFeRDTradeAllowanceCharge.Create);
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ChargeIndicator := not isDiscount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].Currency := currency;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ActualAmount := actualAmount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].BasisAmount := basisAmount;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ChargePercentage := 0;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ReasonCodeAllowance := reasonCodeAllowance;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].ReasonCodeCharge := reasonCodeCharge;
-  FSpecifiedTradeAllowanceCharges[FSpecifiedTradeAllowanceCharges.Count - 1].Reason := reason;
+  TradeAllowance:= TZUGFeRDTradeAllowance.Create;
+  TradeAllowance.ChargeIndicator := false;
+  TradeAllowance.Currency := currency;
+  TradeAllowance.ActualAmount := actualAmount;
+  TradeAllowance.BasisAmount := basisAmount;
+  TradeAllowance.ReasonCode := reasonCode;
+  TradeAllowance.Reason := reason;
+  FSpecifiedTradeAllowanceCharges.Add(TradeAllowance);
+end;
+
+procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeAllowance (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>;
+  actualAmount: Currency;
+  chargePercentage: ZUGFeRDNullable<Currency>;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDAllowanceReasonCodes> = Nil);
+var
+  TradeAllowance: TZUGFeRDTradeAllowance;
+begin
+  TradeAllowance:= TZUGFeRDTradeAllowance.Create;
+  TradeAllowance.ChargeIndicator := false;
+  TradeAllowance.Currency := currency;
+  TradeAllowance.ActualAmount := actualAmount;
+  TradeAllowance.BasisAmount := basisAmount;
+  TradeAllowance.ReasonCode := reasonCode;
+  TradeAllowance.Reason := reason;
+  TradeAllowance.chargePercentage:= chargePercentage;
+  FSpecifiedTradeAllowanceCharges.Add(TradeAllowance);
+end;
+
+procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeCharge (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>; actualAmount: Currency;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil);
+var
+  TradeCharge: TZUGFeRDTradeCharge;
+begin
+  TradeCharge:= TZUGFeRDTradeCharge.Create;
+  TradeCharge.ChargeIndicator := true;
+  TradeCharge.Currency := currency;
+  TradeCharge.ActualAmount := actualAmount;
+  TradeCharge.BasisAmount := basisAmount;
+  TradeCharge.ReasonCode := reasonCode;
+  TradeCharge.Reason := reason;
+  FSpecifiedTradeAllowanceCharges.Add(TradeCharge);
+end;
+
+procedure TZUGFeRDTradeLineItem.AddSpecifiedTradeCharge (
+  currency: TZUGFeRDCurrencyCodes;
+  basisAmount: ZUGFeRDNullable<Currency>;
+  actualAmount: Currency;
+  chargePercentage: ZUGFeRDNullable<Currency>;
+  reason: string; reasonCode: IZUGFeRDNullableParam<TZUGFeRDChargeReasonCodes> = Nil);
+var
+  TradeCharge: TZUGFeRDTradeCharge;
+begin
+  TradeCharge:= TZUGFeRDTradeCharge.Create;
+  TradeCharge.ChargeIndicator := true;
+  TradeCharge.Currency := currency;
+  TradeCharge.ActualAmount := actualAmount;
+  TradeCharge.BasisAmount := basisAmount;
+  TradeCharge.ReasonCode := reasonCode;
+  TradeCharge.Reason := reason;
+  TradeCharge.chargePercentage:= chargePercentage;
+  FSpecifiedTradeAllowanceCharges.Add(TradeCharge);
+end;
+
+function TZUGFeRDTradeLineItem.GetSpecifiedTradeAllowances: TArray<TZUGFeRDTradeAllowance>;
+// over TArray may be iterated and it is freed automatically
+var
+  Count: Integer;
+begin
+  SetLength(Result, FSpecifiedTradeAllowanceCharges.Count);
+  Count:= 0;
+  for var t in FSpecifiedTradeAllowanceCharges do
+  if not(t.ChargeIndicator) then
+  begin
+    Result[Count]:= t as TZUGFeRDTradeAllowance;
+    Inc(Count)
+  end;
+  SetLength(Result, Count)
+end;
+
+function TZUGFeRDTradeLineItem.GetSpecifiedTradeCharges: TArray<TZUGFeRDTradeCharge>;
+// over TArray may be iterated and it is freed automatically
+var
+  Count: Integer;
+begin
+  SetLength(Result, FSpecifiedTradeAllowanceCharges.Count);
+  Count:= 0;
+  for var t in FSpecifiedTradeAllowanceCharges do
+  if t.ChargeIndicator then
+  begin
+    Result[Count]:= t as TZUGFeRDTradeCharge;
+    Inc(Count)
+  end;
+  SetLength(Result, Count)
 end;
 
 end.

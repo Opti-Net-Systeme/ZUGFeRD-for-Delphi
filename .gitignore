@@ -38,6 +38,7 @@ Distribution/java
 Distribution/mustangproject
 Samples/Win64
 Samples/Win32
+Vendor
 
 *.WinMerge
 # Delphi compiler-generated binaries (safe to delete)
@@ -81,3 +82,18 @@ __recovery/
 
 Samples/Rechnung_9202174904.pdf
 Samples/Rechnung_9202174904_ZUGFeRD-invoice.xml
+
+# Review-Dokumentation (lokal, nicht einchecken)
+review-*.md
+.claude/
+CLAUDE.md
+
+Unittest/dunitx-results.xml
+
+Unittest/test.xml
+
+Unittest/ZfDUnitTest.delphilsp.json
+
+Unittest/ZfDUnitTestGUI.delphilsp.json
+
+Unittest/ZfDUnitTestGUI.ini

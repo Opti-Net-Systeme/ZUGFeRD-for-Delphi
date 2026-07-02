@@ -22,7 +22,8 @@ interface
 uses
   System.Generics.Collections,
   intf.ZUGFeRDHelper,
-  intf.ZUGFeRDQuantityCodes;
+  intf.ZUGFeRDQuantityCodes,
+  intf.ZUGFeRDGlobalID;
 
 type
   /// <summary>
@@ -31,9 +32,17 @@ type
   TZUGFeRDIncludedReferencedProduct = class
   private
     FName: string;
-    FUnitQuantity: ZUGFeRDNullable<Double>;
-    FUnitCode: TZUGFeRDQuantityCodes;
+    FUnitQuantity: ZUGFeRDNullable<Currency>;
+    FUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes>;
+    FSellerAssignedID: string;
+    FBuyerAssignedID: string;
+    FIndustryAssignedID: string;
+    FGlobalID: TZUGFeRDGlobalID;
+    FDescription: string;
   public
+    constructor Create;
+    destructor Destroy; override;
+
     /// <summary>
     /// Name of Included Item
     ///
@@ -46,17 +55,59 @@ type
     ///
     /// BT-X-20
     /// </summary>
-    property UnitQuantity: ZUGFeRDNullable<Double> read FUnitQuantity write FUnitQuantity;
+    property UnitQuantity: ZUGFeRDNullable<Currency> read FUnitQuantity write FUnitQuantity;
 
     /// <summary>
     /// Item Base Quantity Unit Code
     ///
     /// BT-X-20-1
     /// </summary>
-    property UnitCode: TZUGFeRDQuantityCodes read FUnitCode write FUnitCode;
+    property UnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes> read FUnitCode write FUnitCode;
+
+    /// <summary>
+    /// The identification of articles based on a registered scheme
+    ///
+    /// GlobalID of Included Item
+    /// </summary>
+    property GlobalID: TZUGFeRDGlobalID read FGlobalID write FGlobalID;
+
+    /// <summary>
+    /// Included Item Seller's identifier
+    /// </summary>
+    property SellerAssignedID: string read FSellerAssignedID write FSellerAssignedID;
+
+    /// <summary>
+    /// Included Item Buyer's identifier
+    /// </summary>
+    property BuyerAssignedID: string read FBuyerAssignedID write FBuyerAssignedID;
+
+    /// <summary>
+    /// Industry AssignedID of Included Item
+    /// </summary>
+    property IndustryAssignedID: string read FIndustryAssignedID write FIndustryAssignedID;
+
+    /// <summary>
+    /// The description of an item
+    ///
+    /// The item’s description makes it possible to describe a product and its properties more comprehensively
+    /// than would be possible with just the article name.
+    /// </summary>
+    property Description: string read FDescription write FDescription;
 
    end;
 
 implementation
+
+constructor TZUGFeRDIncludedReferencedProduct.Create;
+begin
+  inherited Create;
+  FGlobalID := TZUGFeRDGlobalID.Create;
+end;
+
+destructor TZUGFeRDIncludedReferencedProduct.Destroy;
+begin
+  if Assigned(FGlobalID) then begin FGlobalID.Free; FGlobalID := nil; end;
+  inherited;
+end;
 
 end.

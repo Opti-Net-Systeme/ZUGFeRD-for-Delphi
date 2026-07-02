@@ -22,7 +22,8 @@ interface
 uses
   intf.ZUGFeRDGlobalID,
   intf.ZUGFeRDCountryCodes,
-  intf.ZUGFeRDLegalOrganization
+  intf.ZUGFeRDLegalOrganization,
+  intf.ZUGFeRDHelper
   ;
 
 type
@@ -37,9 +38,10 @@ type
     FContactName: string;
     FCity: string;
     FPostcode: string;
-    FCountry: TZUGFeRDCountryCodes;
+    FCountry: ZUGFeRDNullable<TZUGFeRDCountryCodes>;
     FStreet: string;
     FGlobalID: TZUGFeRDGlobalID;
+    FStreet2: string;
     FAddressLine3: string;
     FCountrySubdivisionName: string;
     FSpecifiedLegalOrganization: TZUGFeRDLegalOrganization;
@@ -82,7 +84,7 @@ type
     /// <summary>
     /// Party country
     /// </summary>
-    property Country: TZUGFeRDCountryCodes read FCountry write FCountry;
+    property Country: ZUGFeRDNullable<TZUGFeRDCountryCodes> read FCountry write FCountry;
 
     /// <summary>
     /// Street name and number
@@ -93,6 +95,12 @@ type
     /// Global identifier
     /// </summary>
     property GlobalID: TZUGFeRDGlobalID read FGlobalID write FGlobalID;
+
+    /// <summary>
+    /// Additional address line (LineTwo in CII, AdditionalStreetName in UBL)
+    /// e.g. used for BT-36, BT-51
+    /// </summary>
+    property Street2: string read FStreet2 write FStreet2;
 
     /// <summary>
     /// Address line 3
@@ -119,6 +127,7 @@ implementation
 
 constructor TZUGFeRDParty.Create;
 begin
+  inherited Create;
   FID := TZUGFeRDGlobalID.Create;
   FGlobalID := TZUGFeRDGlobalID.Create;
   FSpecifiedLegalOrganization := nil;//TZUGFeRDLegalOrganization.Create;
