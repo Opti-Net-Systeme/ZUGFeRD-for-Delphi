@@ -283,7 +283,7 @@ begin
     cmd.Add('pushd '+QuoteIfContainsSpace(ExtractFilePath(tmpFilename)));
     cmd.Add(QuoteIfContainsSpace(PdfTkServerPath+'bin\pdftk.exe')+' '+
              QuoteIfContainsSpace(_PdfFilename)+' unpack_files output '+
-             tmpPath);
+             QuoteIfContainsSpace(ExcludeTrailingPathDelimiter(tmpPath)));
     cmd.SaveToFile(tmpFilename+'.bat',TEncoding.UTF8);
 
     Result := ExecAndWait(tmpFilename+'.bat','');
