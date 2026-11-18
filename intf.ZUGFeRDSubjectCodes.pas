@@ -108,6 +108,12 @@ type
   AET,
 
   /// <summary>
+  /// Consignment routing
+  /// </summary>
+  /// Information on routing of the consignment.
+  AIN,
+
+  /// <summary>
   /// Processing Instructions
   /// </summary>
   BAR,
@@ -117,6 +123,14 @@ type
   /// </summary>
   /// Text describing waste related information.
   BLU,
+
+  /// <summary>
+  /// Legislation
+  ///
+  /// Gesetzliche Vorschriften
+  /// </summary>
+  /// Information about legislation, e.g. Paragraph 14b UStG.
+  BLP,
 
   /// <summary>
   /// Order information
@@ -205,7 +219,12 @@ type
   /// </summary>
   ZZZ,
 
-
+  /// <summary>
+  /// Other service information
+  ///
+  /// OSI is a code from the UNTDID 4451 code list
+  /// </summary>
+  OSI,
 
   /// <summary>
   /// Unknown value
@@ -236,8 +255,10 @@ begin
   Map(ACB,     'ACB');
   Map(ADU,     'ADU');
   Map(AET,     'AET');
+  Map(AIN,     'AIN');
   Map(BAR,     'BAR');
   Map(BLU,     'BLU');
+  Map(BLP,     'BLP');
   Map(COI,     'COI');
   Map(CUS,     'CUS');
   Map(PMD,     'PMD');
@@ -250,6 +271,7 @@ begin
   Map(TXD,     'TXD');
   Map(WHI,     'WHI');
   Map(ZZZ,     'ZZZ');
+  Map(OSI,     'OSI');
   Map(Unknown, 'Unknown');
 {.MapEnd}
 end;

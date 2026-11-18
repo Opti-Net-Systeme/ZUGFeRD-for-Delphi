@@ -55,6 +55,7 @@ uses
   intf.ZUGFeRDInvoiceReferencedDocument,
   intf.ZUGFeRDBankAccount,
   intf.ZUGFeRDReceivableSpecifiedTradeAccountingAccount,
+  intf.ZUGFeRDAdvancePayment,
   intf.ZUGFeRDPaymentMeans,
   intf.ZUGFeRDSellerOrderReferencedDocument,
   intf.ZUGFeRDVersion,
@@ -66,6 +67,7 @@ uses
   intf.ZUGFeRDElectronicAddress,
   intf.ZUGFeRDElectronicAddressSchemeIdentifiers,
   intf.ZUGFeRDDespatchAdviceReferencedDocument,
+  intf.ZUGFeRDReceivingAdviceReferencedDocument,
   intf.ZUGFeRDFormats,
   intf.ZUGFeRDTransportmodeCodes,
   intf.ZUGFeRDAllowanceReasonCodes,
@@ -135,6 +137,7 @@ type
     FPaymentTermsList: TObjectList<TZUGFeRDPaymentTerms>;
     FInvoiceReferencedDocuments: TObjectList<TZUGFeRDInvoiceReferencedDocument>;
     FReceivableSpecifiedTradeAccountingAccounts: TObjectList<TZUGFeRDReceivableSpecifiedTradeAccountingAccount>;
+    FAdvancePayments: TObjectList<TZUGFeRDAdvancePayment>;
     FCreditorBankAccounts: TObjectList<TZUGFeRDBankAccount>;
     FDebitorBankAccounts: TObjectList<TZUGFeRDBankAccount>;
     FPaymentMeans: TZUGFeRDPaymentMeans;
@@ -144,9 +147,11 @@ type
     FSellerOrderReferencedDocument: TZUGFeRDSellerOrderReferencedDocument;
     FTransportMode: ZUGFeRDNullable<TZUGFeRDTransportModeCodes>;
     FDespatchAdviceReferencedDocument: TZUGFeRDDespatchAdviceReferencedDocument;
+    FReceivingAdviceReferencedDocument: TZUGFeRDReceivingAdviceReferencedDocument;
     FInvoicer: TZUGFeRDParty;
     FInvoicerContact: TZUGFeRDContact;
     FSellerReferenceNo: String;
+    procedure SetReceivingAdviceReferencedDocumentValue(const value: TZUGFeRDReceivingAdviceReferencedDocument);
   public
     /// <summary>
     /// Invoice Number
@@ -184,6 +189,11 @@ type
     /// Detailed information about the corresponding despatch advice
     /// </summary>
     property DespatchAdviceReferencedDocument : TZUGFeRDDespatchAdviceReferencedDocument read FDespatchAdviceReferencedDocument write FDespatchAdviceReferencedDocument;
+
+    /// <summary>
+    /// Detailed information about the corresponding receiving advice
+    /// </summary>
+    property ReceivingAdviceReferencedDocument: TZUGFeRDReceivingAdviceReferencedDocument read FReceivingAdviceReferencedDocument write SetReceivingAdviceReferencedDocumentValue;
 
     /// <summary>
     /// Detailed information about the corresponding delivery note
@@ -251,6 +261,12 @@ type
     property SellerElectronicAddress : TZUGFeRDElectronicAddress read FSellerElectronicAddress;
 
     property SellerTaxRepresentative: TZUGFeRDParty read FSellerTaxRepresentative write FSellerTaxRepresentative;
+
+    /// <summary>
+    /// List of tax registration numbers for the seller tax representative.
+    ///
+    /// BT-63
+    /// </summary>
     property SellerTaxRepresentativeTaxRegistration: TObjectList<TZUGFeRDTaxRegistration> read FSellerTaxRepresentativeTaxRegistration;
 
   	/// <summary>
@@ -479,6 +495,13 @@ type
     /// Detailed information about the accounting reference
     /// </summary>
     property ReceivableSpecifiedTradeAccountingAccounts: TObjectList<TZUGFeRDReceivableSpecifiedTradeAccountingAccount> read FReceivableSpecifiedTradeAccountingAccounts;
+
+    /// <summary>
+    /// Detailed information about advance payments, BG-X-45
+    ///
+    /// Vorauszahlungen / Anzahlungen. Nur im EXTENDED-Profil zulaessig.
+    /// </summary>
+    property AdvancePayments: TObjectList<TZUGFeRDAdvancePayment> read FAdvancePayments;
 
     /// <summary>
     /// Credit Transfer
@@ -710,6 +733,13 @@ type
     procedure SetDespatchAdviceReferencedDocument(despatchAdviceNo : String; despatchAdviceDate: IZUGFeRDNullableParam<TDateTime> = Nil);
 
     /// <summary>
+    /// Sets detailed information about the corresponding receiving advice
+    /// </summary>
+    /// <param name="receivingAdviceNo"></param>
+    /// <param name="receivingAdviceDate"></param>
+    procedure SetReceivingAdviceReferencedDocument(const receivingAdviceNo: string; receivingAdviceDate: IZUGFeRDNullableParam<TDateTime> = Nil);
+
+    /// <summary>
     /// Sets detailed information about the corresponding delivery note
     /// </summary>
     /// <param name="deliveryNoteNo"></param>
@@ -896,14 +926,14 @@ type
     /// </summary>
     /// <param name="basisAmount">Base amount for tax calculation</param>
     /// <param name="percent">Tax percentage rate</param>
-    /// <param name="taxAmount">Calculated tax amount</param>
+    /// <param name="calculatedAmount">Angegebener Steuerbetrag; ohne Wert für beim Lesen fehlende Beträge.</param>
     /// <param name="typeCode">Type of tax</param>
     /// <param name="categoryCode">Tax category</param>
     /// <param name="allowanceChargeBasisAmount">Base amount for allowances/charges</param>
     /// <param name="exemptionReasonCode">Tax exemption reason code</param>
     /// <param name="exemptionReason">Tax exemption reason text</param>
     /// <param name="lineTotalBasisAmount">Line total base amount for tax calculation</param>
-    function AddApplicableTradeTax(const calculatedAmount, basisAmount: Currency;
+    function AddApplicableTradeTax(calculatedAmount: ZUGFeRDNullable<Currency>; const basisAmount: Currency;
       const percent: Currency; const typeCode: TZUGFeRDTaxTypes;
       const categoryCode: TZUGFeRDTaxCategoryCodes;
       const allowanceChargeBasisAmount: IZUGFeRDNullableParam<Currency> = Nil;
@@ -963,7 +993,7 @@ type
     /// <param name="grossUnitPrice"></param>
     /// <param name="netUnitPrice"></param>
     /// <param name="billedQuantity"></param>
-    /// <param name="lineTotalAmount">net total including discounts and surcharges. This parameter is optional. If it is not filled, the line total amount is automatically calculated based on netUnitPrice and billedQuantity</param>
+    /// <param name="lineTotalAmount">Net total including BG-27 allowances and BG-28 charges. Pass nil to calculate BT-131 when writing, or an IZUGFeRDNullableParam value to preserve an explicitly supplied amount, including 0.00.</param>
     /// <param name="taxType"></param>
     /// <param name="categoryCode"></param>
     /// <param name="taxPercent"></param>
@@ -987,7 +1017,7 @@ type
       const unitQuantity: IZUGFeRDNullableParam<Currency> = nil;
       const grossUnitPrice: IZUGFeRDNullableParam<Currency> = nil;
       const billedQuantity: Currency = 0;
-      const lineTotalAmount: Currency = 0;
+      const lineTotalAmount: IZUGFeRDNullableParam<Currency> = nil;
       const taxType: IZUGFeRDNullableParam<TZUGFeRDTaxTypes> = Nil;
       const categoryCode: IZUGFeRDNullableParam<TZUGFeRDTaxCategoryCodes> = Nil;
       const taxPercent: Currency = 0;
@@ -1014,7 +1044,7 @@ type
       const unitQuantity: IZUGFeRDNullableParam<Currency> = nil;
       const grossUnitPrice: IZUGFeRDNullableParam<Currency> = nil;
       const billedQuantity: Currency = 0;
-      const lineTotalAmount: Currency = 0;
+      const lineTotalAmount: IZUGFeRDNullableParam<Currency> = nil;
       const taxType: IZUGFeRDNullableParam<TZUGFeRDTaxTypes> = Nil;
       const categoryCode: IZUGFeRDNullableParam<TZUGFeRDTaxCategoryCodes> = Nil;
       const taxPercent: Currency = 0;
@@ -1111,6 +1141,7 @@ constructor TZUGFeRDInvoiceDescriptor.Create;
 begin
   FAdditionalReferencedDocuments := TObjectList<TZUGFeRDAdditionalReferencedDocument>.Create;
   FDespatchAdviceReferencedDocument := nil;
+  FReceivingAdviceReferencedDocument := nil;
   FDeliveryNoteReferencedDocument:= nil;//TZUGFeRDDeliveryNoteReferencedDocument.Create;
   FContractReferencedDocument    := nil;//TZUGFeRDContractReferencedDocument.Create;
   FSpecifiedProcuringProject     := nil;//TZUGFeRDSpecifiedProcuringProject.Create;
@@ -1142,6 +1173,7 @@ begin
   FPaymentTermsList              := TObjectList<TZUGFeRDPaymentTerms>.Create;
   FInvoiceReferencedDocuments    := TObjectList<TZUGFeRDInvoiceReferencedDocument>.Create;
   FReceivableSpecifiedTradeAccountingAccounts:= TObjectList<TZUGFeRDReceivableSpecifiedTradeAccountingAccount>.Create;
+  FAdvancePayments               := TObjectList<TZUGFeRDAdvancePayment>.Create;
   FCreditorBankAccounts          := TObjectList<TZUGFeRDBankAccount>.Create;
   FDebitorBankAccounts           := TObjectList<TZUGFeRDBankAccount>.Create;
   FPaymentMeans                  := nil;//TZUGFeRDPaymentMeans.Create;
@@ -1154,6 +1186,7 @@ destructor TZUGFeRDInvoiceDescriptor.Destroy;
 begin
   if Assigned(FAdditionalReferencedDocuments ) then begin FAdditionalReferencedDocuments.Free; FAdditionalReferencedDocuments  := nil; end;
   if Assigned(FDespatchAdviceReferencedDocument) then begin FDespatchAdviceReferencedDocument.Free; FDespatchAdviceReferencedDocument := nil; end;
+  if Assigned(FReceivingAdviceReferencedDocument) then begin FReceivingAdviceReferencedDocument.Free; FReceivingAdviceReferencedDocument := nil; end;
   if Assigned(FDeliveryNoteReferencedDocument) then begin FDeliveryNoteReferencedDocument.Free; FDeliveryNoteReferencedDocument := nil; end;
   if Assigned(FContractReferencedDocument    ) then begin FContractReferencedDocument.Free; FContractReferencedDocument := nil; end;
   if Assigned(FSpecifiedProcuringProject     ) then begin FSpecifiedProcuringProject.Free; FSpecifiedProcuringProject := nil; end;
@@ -1186,6 +1219,7 @@ begin
   if Assigned(FPaymentTermsList              ) then begin FPaymentTermsList.Free; FPaymentTermsList := nil; end;
   if Assigned(FInvoiceReferencedDocuments    ) then begin FInvoiceReferencedDocuments.Free; FInvoiceReferencedDocuments := nil; end;
   if Assigned(FReceivableSpecifiedTradeAccountingAccounts) then begin FReceivableSpecifiedTradeAccountingAccounts.Free; FReceivableSpecifiedTradeAccountingAccounts := nil; end;
+  if Assigned(FAdvancePayments               ) then begin FAdvancePayments.Free; FAdvancePayments := nil; end;
   if Assigned(FCreditorBankAccounts         ) then begin FCreditorBankAccounts.Free; FCreditorBankAccounts := nil; end;
   if Assigned(FDebitorBankAccounts          ) then begin FDebitorBankAccounts.Free; FDebitorBankAccounts := nil; end;
   if Assigned(FPaymentMeans                 ) then begin FPaymentMeans.Free; FPaymentMeans := nil; end;
@@ -1196,49 +1230,70 @@ end;
 class function TZUGFeRDInvoiceDescriptor.GetVersion(const filename: string): TZUGFeRDVersion;
 var
   reader: TZUGFeRDIInvoiceDescriptorReader;
+  ms: TFileStream;
 begin
-  reader := TZUGFeRDInvoiceDescriptor1Reader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := TZUGFeRDVersion.Version1;
-      Exit;
-    end;
-  finally
-    reader.Free;
-  end;
+  // Die Datei wird nur einmal geöffnet; früher öffnete jede Reader-Prüfung
+  // die Datei erneut (bis zu viermal). Die Fehlerklasse bleibt wie zuvor
+  // (EFileNotFoundException aus IsReadableByThisReaderVersion(filename)).
+  if not FileExists(filename) then
+    raise EFileNotFoundException.Create('File not found: ' + filename);
 
-  reader := TZUGFeRDInvoiceDescriptor22UBLReader.Create;
+  // Ein TFileStream statt einer Kopie im Speicher: IsReadableByThisReaderVersion stellt
+  // die Position wieder her, große eingebettete Anhänge werden nicht doppelt gehalten.
+  ms := TFileStream.Create(filename, fmOpenRead or fmShareDenyWrite);
   try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := TZUGFeRDVersion.Version23;
-      Exit;
-    end;
-  finally
-    reader.Free;
-  end;
 
-  reader := TZUGFeRDInvoiceDescriptor23CIIReader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := TZUGFeRDVersion.Version23;
-      Exit;
+    reader := TZUGFeRDInvoiceDescriptor1Reader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := TZUGFeRDVersion.Version1;
+        Exit;
+      end;
+    finally
+      reader.Free;
     end;
-  finally
-    reader.Free;
-  end;
 
-  reader := TZUGFeRDInvoiceDescriptor20Reader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := TZUGFeRDVersion.Version20;
-      Exit;
+    reader := TZUGFeRDInvoiceDescriptor22UBLReader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := TZUGFeRDVersion.Version23;
+        Exit;
+      end;
+    finally
+      reader.Free;
+    end;
+
+    // Reihenfolge bewusst 23CII vor 20: Der Guideline-URN des Profils COMFORT
+    // (urn:cen.eu:en16931:2017) ist in ZUGFeRD 2.0 und 2.1+ identisch, eine
+    // 2.0-COMFORT-Datei ist also strukturell nicht von 2.1+ zu unterscheiden und wird
+    // als Version23 gemeldet und vom 23CII-Reader gelesen (gleiche Namensräume, daher
+    // folgenlos). BASIC/EXTENDED/MINIMUM/BASIC-WL tragen 2.0-spezifische URNs
+    // (…zugferd.de:2p0:…) und werden korrekt als Version20 erkannt.
+    reader := TZUGFeRDInvoiceDescriptor23CIIReader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := TZUGFeRDVersion.Version23;
+        Exit;
+      end;
+    finally
+      reader.Free;
+    end;
+
+    reader := TZUGFeRDInvoiceDescriptor20Reader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := TZUGFeRDVersion.Version20;
+        Exit;
+      end;
+    finally
+      reader.Free;
     end;
   finally
-    reader.Free;
+    ms.Free;
   end;
 
   raise TZUGFeRDUnsupportedException.Create('No ZUGFeRD invoice reader was able to parse this file "' + filename + '"!');
@@ -1406,49 +1461,65 @@ end;
 class function TZUGFeRDInvoiceDescriptor.Load(filename: string): TZUGFeRDInvoiceDescriptor;
 var
   reader: TZUGFeRDIInvoiceDescriptorReader;
+  ms: TFileStream;
 begin
-  reader := TZUGFeRDInvoiceDescriptor1Reader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := reader.Load(filename);
-      exit;
-    end;
-  finally
-    reader.Free;
-  end;
+  // Die Datei wird nur einmal geöffnet; früher öffnete jede Reader-Prüfung
+  // und das Laden selbst die Datei erneut (bis zu fünfmal). Die Fehlerklasse bleibt wie
+  // zuvor (EFileNotFoundException aus IsReadableByThisReaderVersion(filename)).
+  // Zur Reader-Reihenfolge (2.0 COMFORT wird als Version23 gelesen) siehe GetVersion(filename).
+  if not FileExists(filename) then
+    raise EFileNotFoundException.Create('File not found: ' + filename);
 
-  reader := TZUGFeRDInvoiceDescriptor22UBLReader.Create;
+  // Ein TFileStream statt einer Kopie im Speicher: IsReadableByThisReaderVersion stellt
+  // die Position wieder her, große eingebettete Anhänge werden nicht doppelt gehalten.
+  ms := TFileStream.Create(filename, fmOpenRead or fmShareDenyWrite);
   try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := reader.Load(filename);
-      exit;
-    end;
-  finally
-    reader.Free;
-  end;
 
-  reader := TZUGFeRDInvoiceDescriptor23CIIReader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := reader.Load(filename);
-      exit;
+    reader := TZUGFeRDInvoiceDescriptor1Reader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := reader.Load(ms);
+        exit;
+      end;
+    finally
+      reader.Free;
     end;
-  finally
-    reader.Free;
-  end;
 
-  reader := TZUGFeRDInvoiceDescriptor20Reader.Create;
-  try
-    if reader.IsReadableByThisReaderVersion(filename) then
-    begin
-      Result := reader.Load(filename);
-      exit;
+    reader := TZUGFeRDInvoiceDescriptor22UBLReader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := reader.Load(ms);
+        exit;
+      end;
+    finally
+      reader.Free;
+    end;
+
+    reader := TZUGFeRDInvoiceDescriptor23CIIReader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := reader.Load(ms);
+        exit;
+      end;
+    finally
+      reader.Free;
+    end;
+
+    reader := TZUGFeRDInvoiceDescriptor20Reader.Create;
+    try
+      if reader.IsReadableByThisReaderVersion(ms) then
+      begin
+        Result := reader.Load(ms);
+        exit;
+      end;
+    finally
+      reader.Free;
     end;
   finally
-    reader.Free;
+    ms.Free;
   end;
 
   raise TZUGFeRDUnsupportedException.CreateFmt('No ZUGFeRD invoice reader was able to parse this file ''%s''!', [filename]);
@@ -1633,6 +1704,25 @@ begin
     FDespatchAdviceReferencedDocument := TZUGFeRDDespatchAdviceReferencedDocument.Create;
   FDespatchAdviceReferencedDocument.ID := despatchAdviceNo;
   FDespatchAdviceReferencedDocument.IssueDateTime:= despatchAdviceDate;
+end;
+
+procedure TZUGFeRDInvoiceDescriptor.SetReceivingAdviceReferencedDocument(
+  const receivingAdviceNo: string; receivingAdviceDate: IZUGFeRDNullableParam<TDateTime> = Nil);
+begin
+  if FReceivingAdviceReferencedDocument = nil then
+    FReceivingAdviceReferencedDocument := TZUGFeRDReceivingAdviceReferencedDocument.Create;
+  FReceivingAdviceReferencedDocument.ID := receivingAdviceNo;
+  FReceivingAdviceReferencedDocument.IssueDateTime := receivingAdviceDate;
+end;
+
+procedure TZUGFeRDInvoiceDescriptor.SetReceivingAdviceReferencedDocumentValue(
+  const value: TZUGFeRDReceivingAdviceReferencedDocument);
+begin
+  if FReceivingAdviceReferencedDocument = value then
+    Exit;
+
+  FReceivingAdviceReferencedDocument.Free;
+  FReceivingAdviceReferencedDocument := value;
 end;
 
 procedure TZUGFeRDInvoiceDescriptor.SetContractReferencedDocument(const contractNo: string; const contractDate: TDateTime);
@@ -1847,7 +1937,7 @@ begin
   TaxCurrency:= accountingCurrency;
 end;
 
-function TZUGFeRDInvoiceDescriptor.AddApplicableTradeTax(const calculatedAmount, basisAmount: Currency;
+function TZUGFeRDInvoiceDescriptor.AddApplicableTradeTax(calculatedAmount: ZUGFeRDNullable<Currency>; const basisAmount: Currency;
   const percent: Currency; const typeCode: TZUGFeRDTaxTypes;
   const categoryCode: TZUGFeRDTaxCategoryCodes;
   const allowanceChargeBasisAmount: IZUGFeRDNullableParam<Currency> = Nil;
@@ -1960,7 +2050,7 @@ function TZUGFeRDInvoiceDescriptor.AddTradeLineItem(
   const unitQuantity: IZUGFeRDNullableParam<Currency> = nil;
   const grossUnitPrice: IZUGFeRDNullableParam<Currency> = nil;
   const billedQuantity: Currency = 0;
-  const lineTotalAmount: Currency = 0;
+  const lineTotalAmount: IZUGFeRDNullableParam<Currency> = nil;
   const taxType: IZUGFeRDNullableParam<TZUGFeRDTaxTypes> = Nil;
   const categoryCode: IZUGFeRDNullableParam<TZUGFeRDTaxCategoryCodes> = Nil;
   const taxPercent: Currency = 0;
@@ -2009,7 +2099,7 @@ function TZUGFeRDInvoiceDescriptor._AddTradeLineItem(const lineID: string;
   const unitQuantity: IZUGFeRDNullableParam<Currency> = nil;
   const grossUnitPrice: IZUGFeRDNullableParam<Currency> = nil;
   const billedQuantity: Currency = 0;
-  const lineTotalAmount: Currency = 0;
+  const lineTotalAmount: IZUGFeRDNullableParam<Currency> = nil;
   const taxType: IZUGFeRDNullableParam<TZUGFeRDTaxTypes> = Nil;
   const categoryCode: IZUGFeRDNullableParam<TZUGFeRDTaxCategoryCodes> = Nil;
   const taxPercent: Currency = 0;

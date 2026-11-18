@@ -29,6 +29,37 @@ uses
   ,System.Generics.Collections
   ;
 
+{
+  Versionsangaben der Delphi-Bibliothek, unabhängig von den unterstützten
+  ZUGFeRD-/Factur-X-Formaten und vom Synchronisierungspunkt der C#-Bibliothek.
+
+  ZfDLibraryVersion:
+    Major.Minor.Patch.Build. Major bei inkompatiblen API-Änderungen,
+    Minor bei kompatiblen Erweiterungen, Patch bei Fehlerkorrekturen.
+    Die vierte Stelle bleibt zunächst 0; keine automatische Buildzählung.
+    Aktualisierung je veröffentlichtem fachlich geändertem Bibliotheksstand,
+    nicht je Zwischencommit. Reine Dokumentations- und Teständerungen
+    erfordern keine Erhöhung.
+
+  ZfDLibrarySourceRevision:
+    Vollständiger Git-Hash des geprüften ZfD-Quellstands vor der Aktualisierung
+    dieser Versionsangaben, keine SVN-Revision und kein C#-Sync-Point.
+    GitHub ist der Repository-Host; derselbe Commit hat lokal und auf GitHub
+    denselben Hash. Auf GitHub ist er erst nach dem Push aufrufbar.
+    Nach Commit und Prüfung des Quellstands den Hash mit git rev-parse HEAD
+    ermitteln und hier eintragen. Änderungen an diesem Versionsblock werden
+    separat und ohne fachliche Änderungen committed. Die Revision bezeichnet
+    deshalb nicht den Commit, der diesen Metadatenstand enthält.
+
+    Nach weiteren fachlichen Änderungen muss der neue Quellstand geprüft
+    und die Kennung vor der Weitergabe aktualisiert werden.
+    Beim unveränderten Übernehmen nach SVN bleiben beide Angaben erhalten.
+    Lokale Änderungen werden durch diese Konstanten nicht erkannt.
+}
+const
+  ZfDLibraryVersion = '2.8.0.0';
+  ZfDLibrarySourceRevision = 'f0b1ffc29bfa2c72b1d6173063eb070536ff9aa6';
+
 type
 
   TZUGFeRDHelper = class(TObject)
@@ -775,9 +806,14 @@ end;
 
 class function TEnumExtensions<TEnum>.StringToEnum(const Value: string): TEnum;
 begin
-  Result := Default(TEnum);
-  if Trim(Value) <> '' then
-    FStringToEnum.TryGetValue(Value, Result); // also returns Default(TEnum) if not found
+  if (Trim(Value) <> '') and FStringToEnum.TryGetValue(Value, Result) then
+    exit;
+
+  // Unbekannte Codes duerfen nicht still auf den ersten Enum-Wert abgebildet werden,
+  // sonst ist z.B. eine unbekannte listID nicht mehr von einer echten Angabe zu
+  // unterscheiden. Enums, die einen Wert 'Unknown' registriert haben, liefern diesen.
+  if not FStringToEnum.TryGetValue('Unknown', Result) then
+    Result := Default(TEnum);
 end;
 
 end.

@@ -79,26 +79,12 @@ type
     procedure _writeDocumentLevelSpecifiedTradeAllowanceCharge(_writer: TZUGFeRDProfileAwareXmlTextWriter; tradeAllowanceCharge: TZUGFeRDAbstractTradeAllowanceCharge);
     procedure _writeOptionalAmount(_writer : TZUGFeRDProfileAwareXmlTextWriter; tagName : string; value : ZUGFeRDNullable<Currency>; numDecimals : Integer = 2; forceCurrency : Boolean = false; profile : TZUGFeRDProfiles = TZUGFERDPROFILES_DEFAULT);
     procedure _writeOptionalAdaptiveAmount(_writer: TZUGFeRDProfileAwareXmlTextWriter; _tagName: string; _value: ZUGFeRDNullable<Currency>; _numDecimals: Integer = 2;_maxnumDecimals: Integer = 4; _forceCurrency: boolean = false);
-    procedure _writeOptionalContact(_writer: TZUGFeRDProfileAwareXmlTextWriter; contactTag: String; contact: TZUGFeRDContact);
+    procedure _writeOptionalContact(_writer: TZUGFeRDProfileAwareXmlTextWriter; contactTag: String; contact: TZUGFeRDContact; restrictContactNameCardinality: Boolean);
     procedure _writeOptionalParty(_writer: TZUGFeRDProfileAwareXmlTextWriter; PartyTag: String; Party: TZUGFeRDParty; Contact: TZUGFeRDContact = nil; TaxRegistrations: TObjectList<TZUGFeRDTaxRegistration> = nil);
     procedure _writeOptionalTaxes(_writer : TZUGFeRDProfileAwareXmlTextWriter; options: TZUGFeRDInvoiceFormatOptions);
     procedure _writeNotes(_writer : TZUGFeRDProfileAwareXmlTextWriter;notes : TObjectList<TZUGFeRDNote>);
     procedure _writeElementWithAttribute(_writer: TZUGFeRDProfileAwareXmlTextWriter; tagName, attributeName,attributeValue, nodeValue: String);
     function GetNameSpaces: TDictionary<string, string>;
-  private const
-    ALL_PROFILES = [TZUGFeRDProfile.Minimum,
-                    TZUGFeRDProfile.BasicWL,
-                    TZUGFeRDProfile.Basic,
-                    TZUGFeRDProfile.Comfort,
-                    TZUGFeRDProfile.Extended,
-                    TZUGFeRDProfile.XRechnung1,
-                    TZUGFeRDProfile.XRechnung,
-                    TZUGFeRDProfile.EReporting];
-    PROFILE_COMFORT_EXTENDED_XRECHNUNG =
-                   [TZUGFeRDProfile.Comfort,
-                    TZUGFeRDProfile.Extended,
-                    TZUGFeRDProfile.XRechnung1,
-                    TZUGFeRDProfile.XRechnung];
   public
     function Validate(_descriptor: TZUGFeRDInvoiceDescriptor; _throwExceptions: Boolean = True): Boolean; override;
     /// <summary>
@@ -138,6 +124,7 @@ begin
     raise TZUGFeRDUnsupportedException.Create('UBL format is not supported for ZUGFeRD 2.0');
 
   // write data
+  ValidateTaxAmounts(_descriptor, True);
   streamPosition := _stream.Position;
 
   Descriptor := _descriptor;
@@ -594,7 +581,8 @@ begin
   Writer.WriteEndElement(); // !ApplicableHeaderTradeAgreement
 
   WriteComment(Writer, options, TZUGFeRDInvoiceCommentConstants.ApplicableHeaderTradeDeliveryComment);
-  Writer.WriteStartElement('ram:ApplicableHeaderTradeDelivery'); // Pflichteintrag
+  // CII-XSD: Der Container ist auch ohne Lieferdatum oder Lieferadresse obligatorisch.
+  Writer.WriteStartRequiredElement('ram:ApplicableHeaderTradeDelivery'); // Pflichteintrag
 
   //RelatedSupplyChainConsignment --> SpecifiedLogisticsTransportMovement --> ModeCode // Only in extended profile
   if(Descriptor.TransportMode <> nil) then
@@ -623,6 +611,26 @@ if (Descriptor.Profile = TZUGFeRDProfile.Extended) then
     Writer.WriteEndElement(); // !OccurrenceDateTime()
     Writer.WriteEndElement(); // !ActualDeliverySupplyChainEvent
   end;
+
+  //#region ReceivingAdviceReferencedDocument
+  if Descriptor.ReceivingAdviceReferencedDocument <> nil then
+  begin
+    Writer.WriteStartElement('ram:ReceivingAdviceReferencedDocument', PROFILE_COMFORT_EXTENDED_XRECHNUNG);
+    Writer.WriteElementString('ram:IssuerAssignedID', Descriptor.ReceivingAdviceReferencedDocument.ID);
+
+    if Descriptor.ReceivingAdviceReferencedDocument.IssueDateTime.HasValue then
+    begin
+      Writer.WriteStartElement('ram:FormattedIssueDateTime', [TZUGFeRDProfile.Extended]);
+      Writer.WriteStartElement('qdt:DateTimeString');
+      Writer.WriteAttributeString('format', '102');
+      Writer.WriteValue(_formatDate(Descriptor.ReceivingAdviceReferencedDocument.IssueDateTime.Value));
+      Writer.WriteEndElement(); // !qdt:DateTimeString
+      Writer.WriteEndElement(); // !ram:FormattedIssueDateTime
+    end;
+
+    Writer.WriteEndElement(); // !ReceivingAdviceReferencedDocument
+  end;
+  //#endregion
 
   if (Descriptor.DeliveryNoteReferencedDocument <> nil) then
   begin
@@ -673,7 +681,16 @@ if (Descriptor.Profile = TZUGFeRDProfile.Extended) then
 
   //   3. TaxCurrencyCode (optional)
   //   BT-6
-	if Descriptor.TaxCurrency.HasValue then
+  // BT-6 und BT-111 gehören zusammen: BR-53 verlangt zu einem vorhandenen
+  // Steuerwährungscode einen Steuerbetrag in eben dieser Währung. Die Bedingung
+  // wird deshalb einmal gebildet und an beiden Stellen verwendet - sonst entsteht
+  // ein BT-6 ohne BT-111, sobald der Betrag in Abrechnungswährung fehlt.
+  var writeAccountingCurrency: Boolean :=
+    Descriptor.TaxCurrency.HasValue and
+    (Descriptor.TaxCurrency.Value <> Descriptor.Currency) and
+    Descriptor.TaxTotalAmountInAccountingCurrency.HasValue;
+
+	if writeAccountingCurrency then
   	Writer.WriteElementString('ram:TaxCurrencyCode', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.TaxCurrency), [TZUGFeRDProfile.Comfort,TZUGFeRDProfile.Extended,TZUGFeRDProfile.XRechnung,TZUGFeRDProfile.XRechnung1]);
 
   //   4. InvoiceCurrencyCode (optional)
@@ -1011,9 +1028,8 @@ if (Descriptor.Profile = TZUGFeRDProfile.Extended) then
   _writeOptionalAmount(Writer, 'ram:TaxBasisTotalAmount', Descriptor.TaxBasisAmount);
   _writeOptionalAmount(Writer, 'ram:TaxTotalAmount', Descriptor.TaxTotalAmount, 2, true);
 
-  // BT-111: TaxTotalAmount in accounting currency — only when BT-6 (TaxCurrency) differs from BT-5 (Currency)
-  if Descriptor.TaxCurrency.HasValue and (Descriptor.TaxCurrency.Value <> Descriptor.Currency) and
-     Descriptor.TaxTotalAmountInAccountingCurrency.HasValue then
+  // BT-111: TaxTotalAmount in accounting currency, an dieselbe Bedingung geknüpft wie BT-6
+  if writeAccountingCurrency then
   begin
     Writer.WriteStartElement('ram:TaxTotalAmount');
     Writer.WriteAttributeString('currencyID', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.TaxCurrency.Value));
@@ -1162,11 +1178,15 @@ begin
     _writer.WriteStartElement('ram:ApplicableTradeTax');
 
     _writer.WriteStartElement('ram:CalculatedAmount');
-    _writer.WriteValue(_formatDecimal(tax.TaxAmount));
+    _writer.WriteValue(_formatDecimal(tax.TaxAmount.Value));
     _writer.WriteEndElement(); // !CalculatedAmount
 
     _writer.WriteElementString('ram:TypeCode', TEnumExtensions<TZUGFeRDTaxTypes>.EnumToString(tax.TypeCode));
-    _writer.WriteOptionalElementString('ram:ExemptionReason', tax.ExemptionReason);
+
+    // BR-Z-10: bei Steuerkategorie Z (Nullsatz) darf kein Befreiungsgrund stehen
+    if (not tax.CategoryCode.HasValue) or (tax.CategoryCode.Value <> TZUGFeRDTaxCategoryCodes.Z) then
+      _writer.WriteOptionalElementString('ram:ExemptionReason', tax.ExemptionReason);
+
     _writer.WriteStartElement('ram:BasisAmount');
     _writer.WriteValue(_formatDecimal(tax.BasisAmount));
     _writer.WriteEndElement(); // !BasisAmount
@@ -1187,7 +1207,9 @@ begin
 
     if tax.CategoryCode.HasValue then
       _writer.WriteElementString('ram:CategoryCode', TEnumExtensions<TZUGFeRDTaxCategoryCodes>.EnumToString(tax.CategoryCode));
-    if tax.ExemptionReasonCode.hasValue then
+    // BR-Z-10: bei Steuerkategorie Z (Nullsatz) darf kein Befreiungsgrund stehen
+    if tax.ExemptionReasonCode.hasValue and
+       ((not tax.CategoryCode.HasValue) or (tax.CategoryCode.Value <> TZUGFeRDTaxCategoryCodes.Z)) then
       _writer.WriteElementString('ram:ExemptionReasonCode', TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.EnumToString(tax.ExemptionReasonCode));
     if tax.TaxPointDate.HasValue then
     begin
@@ -1250,7 +1272,8 @@ begin
 
   _Writer.WriteOptionalElementString('ram:Name', Party.Name);
   _Writer.WriteOptionalElementString('ram:Description', Party.Description, PROFILE_COMFORT_EXTENDED_XRECHNUNG);
-  _writeOptionalContact(_writer, 'ram:DefinedTradeContact', Contact);
+  _writeOptionalContact(_writer, 'ram:DefinedTradeContact', Contact,
+    (PartyTag = 'ram:SellerTradeParty') or (PartyTag = 'ram:BuyerTradeParty'));
 
   _writer.WriteStartElement('ram:PostalTradeAddress');
   _writer.WriteOptionalElementString('ram:PostcodeCode', Party.Postcode);
@@ -1280,15 +1303,26 @@ begin
   _writer.WriteEndElement(); // !*TradeParty
 end;
 
-procedure TZUGFeRDInvoiceDescriptor20Writer._writeOptionalContact(_writer: TZUGFeRDProfileAwareXmlTextWriter; contactTag : String;  contact : TZUGFeRDContact);
+procedure TZUGFeRDInvoiceDescriptor20Writer._writeOptionalContact(_writer: TZUGFeRDProfileAwareXmlTextWriter; contactTag: String; contact: TZUGFeRDContact; restrictContactNameCardinality: Boolean);
 begin
   if contact = nil then
     exit;
 
   _writer.WriteStartElement(contactTag);
 
-  _writer.WriteOptionalElementString('ram:PersonName', contact.Name);
-  _writer.WriteOptionalElementString('ram:DepartmentName', contact.OrgUnit);
+  // PersonName und DepartmentName bilden bei Verkäufer und Käufer denselben BT ab und dürfen nach CII-SR-465/466 nicht gemeinsam vorkommen.
+  if restrictContactNameCardinality then
+  begin
+    if contact.Name <> '' then
+      _writer.WriteOptionalElementString('ram:PersonName', contact.Name)
+    else
+      _writer.WriteOptionalElementString('ram:DepartmentName', contact.OrgUnit);
+  end
+  else
+  begin
+    _writer.WriteOptionalElementString('ram:PersonName', contact.Name);
+    _writer.WriteOptionalElementString('ram:DepartmentName', contact.OrgUnit);
+  end;
 
   if (contact.PhoneNo <> '') then
   begin
@@ -1365,7 +1399,7 @@ begin
     end;
   end;
 
-  Result := true;
+  Result := ValidateTaxAmounts(_descriptor, _throwExceptions);
 end;
 
 end.

@@ -75,21 +75,6 @@ type
     procedure _writeOptionalTaxes(_writer: TZUGFeRDProfileAwareXmlTextWriter; options: TZUGFeRDInvoiceFormatOptions);
     procedure _writeElementWithAttribute(_writer: TZUGFeRDProfileAwareXmlTextWriter; tagName, attributeName,attributeValue, nodeValue: String);
     function GetNameSpaces: TDictionary<string, string>;
-
-  private const
-    ALL_PROFILES = [TZUGFeRDProfile.Minimum,
-                    TZUGFeRDProfile.BasicWL,
-                    TZUGFeRDProfile.Basic,
-                    TZUGFeRDProfile.Comfort,
-                    TZUGFeRDProfile.Extended,
-                    TZUGFeRDProfile.XRechnung1,
-                    TZUGFeRDProfile.XRechnung,
-                    TZUGFeRDProfile.EReporting];
-    PROFILE_COMFORT_EXTENDED_XRECHNUNG =
-                   [TZUGFeRDProfile.Comfort,
-                    TZUGFeRDProfile.Extended,
-                    TZUGFeRDProfile.XRechnung1,
-                    TZUGFeRDProfile.XRechnung];
   public
     function Validate(_descriptor: TZUGFeRDInvoiceDescriptor; _throwExceptions: Boolean = True): Boolean; override;
     /// <summary>
@@ -130,6 +115,7 @@ begin
     raise TZUGFeRDUnsupportedException.Create('Invalid profile used for ZUGFeRD 1.x invoice.');
 
   // write data
+  ValidateTaxAmounts(_descriptor, True);
   streamPosition := _stream.Position;
 
   Descriptor := _descriptor;
@@ -861,7 +847,7 @@ begin
 
     _writer.WriteStartElement('ram:CalculatedAmount');
     _writer.WriteAttributeString('currencyID', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.Currency));
-    _writer.WriteValue(_formatDecimal(tax.TaxAmount));
+    _writer.WriteValue(_formatDecimal(tax.TaxAmount.Value));
     _writer.WriteEndElement(); // !CalculatedAmount
 
     _writer.WriteElementString('ram:TypeCode', TEnumExtensions<TZUGFeRDTaxTypes>.EnumToString(tax.TypeCode));
@@ -1071,7 +1057,7 @@ begin
     end;
   end;
 
-  Result := true;
+  Result := ValidateTaxAmounts(_descriptor, _throwExceptions);
 end;
 
 procedure TZUGFeRDInvoiceDescriptor1Writer._writeOptionalAmount(

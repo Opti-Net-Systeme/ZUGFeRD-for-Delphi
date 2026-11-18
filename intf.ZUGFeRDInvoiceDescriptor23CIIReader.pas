@@ -38,6 +38,8 @@ uses
   ,intf.ZUGFeRDGlobalID,intf.ZUGFeRDGlobalIDSchemeIdentifiers
   ,intf.ZUGFeRDCountryCodes
   ,intf.ZUGFeRDTaxRegistrationSchemeID
+  ,intf.ZUGFeRDAdvancePayment
+  ,intf.ZUGFeRDTax
   ,intf.ZUGFeRDElectronicAddressSchemeIdentifiers
   ,intf.ZUGFeRDContact
   ,intf.ZUGFeRDAdditionalReferencedDocumentTypeCodes
@@ -64,6 +66,7 @@ uses
   ,intf.ZUGFeRDNote
   ,intf.ZUGFeRDContentCodes
   ,intf.ZUGFeRDDespatchAdviceReferencedDocument
+  ,intf.ZUGFeRDReceivingAdviceReferencedDocument
   ,intf.ZUGFeRDDesignatedProductClassificationClassCodes
   ,intf.ZUGFeRDXmlUtils
   ,intf.ZUGFeRDIncludedReferencedProduct
@@ -79,9 +82,11 @@ type
   TZUGFeRDInvoiceDescriptor23CIIReader = class(TZUGFeRDIInvoiceDescriptorReader)
   private
     function GetValidURIs : TArray<string>;
+    /// <summary>Übergibt die Position an den Aufrufer und gibt Teilergebnisse bei Parserfehlern frei.</summary>
     function _parseTradeLineItem(tradeLineItem : IXmlDomNode {nsmgr: XmlNamespaceManager = nil; }) : TZUGFeRDTradeLineItem;
     function _nodeAsContact(basenode: IXmlDomNode; const xpath: string) : TZUGFeRDContact;
     function _nodeAsParty(basenode: IXmlDomNode; const xpath: string) : TZUGFeRDParty;
+    /// <summary>Übergibt die Referenz samt Anhang erst nach erfolgreichem Parsen an den Aufrufer.</summary>
     function _getAdditionalReferencedDocument(a_oXmlNode : IXmlDomNode {nsmgr: XmlNamespaceManager = nil; }) : TZUGFeRDAdditionalReferencedDocument;
     function _nodeAsLegalOrganization(basenode: IXmlDomNode; const xpath: string) : TZUGFeRDLegalOrganization;
   public
@@ -91,6 +96,7 @@ type
 
     /// <summary>
     /// Parses the ZUGFeRD invoice from the given stream.
+    /// Fehlende BG-X-45-Pflichtangaben bleiben im Modell erkennbar; ihre Präsenz prüft der Writer.
     ///
     /// Make sure that the stream is open, otherwise an IllegalStreamException exception is thrown.
     /// Important: the stream will not be closed by this function.
@@ -255,6 +261,7 @@ begin
   //   nsmgr.AddNamespace('rsm', nsmgr.DefaultNamespace);
 
   Result := TZUGFeRDInvoiceDescriptor.Create;
+  try
 
   Result.IsTest := TZUGFeRDXmlUtils.NodeAsBool(doc.documentElement,'//*[local-name()="ExchangedDocumentContext"]/ram:TestIndicator/udt:Indicator',false);
   Result.BusinessProcess := TZUGFeRDXmlUtils.NodeAsString(doc.DocumentElement, '//*[local-name()="BusinessProcessSpecifiedDocumentContextParameter"]/ram:ID');//, nsmgr),
@@ -387,6 +394,15 @@ begin
     Result.DespatchAdviceReferencedDocument.IssueDateTime := _despatchAdviceDate
   end;
 
+  var _receivingAdviceNo : String := TZUGFeRDXmlUtils.NodeAsString(doc.DocumentElement, '//ram:ApplicableHeaderTradeDelivery/ram:ReceivingAdviceReferencedDocument/ram:IssuerAssignedID');
+  var _receivingAdviceDate : ZUGFeRDNullable<TDateTime> := TZUGFeRDXmlUtils.NodeAsDateTime(doc.DocumentElement, '//ram:ApplicableHeaderTradeDelivery/ram:ReceivingAdviceReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
+
+  if Not(_receivingAdviceDate.HasValue) then
+    _receivingAdviceDate := TZUGFeRDXmlUtils.NodeAsDateTime(doc.DocumentElement, '//ram:ApplicableHeaderTradeDelivery/ram:ReceivingAdviceReferencedDocument/ram:FormattedIssueDateTime');
+
+  if _receivingAdviceDate.HasValue or (_receivingAdviceNo <> '') then
+    Result.SetReceivingAdviceReferencedDocument(_receivingAdviceNo, _receivingAdviceDate);
+
   var _deliveryNoteNo : String := TZUGFeRDXmlUtils.NodeAsString(doc.DocumentElement, '//ram:ApplicableHeaderTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:IssuerAssignedID');
   var _deliveryNoteDate : ZUGFeRDNullable<TDateTime> := TZUGFeRDXmlUtils.NodeAsDateTime(doc.DocumentElement, '//ram:ApplicableHeaderTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:FormattedIssueDateTime/udt:DateTimeString');
 
@@ -491,7 +507,7 @@ begin
   nodes := doc.SelectNodes('//ram:ApplicableHeaderTradeSettlement/ram:ApplicableTradeTax');
   for i := 0 to nodes.length-1 do
   begin
-    var calculatedAmount: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:CalculatedAmount', 0);
+    var calculatedAmount: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:CalculatedAmount');
     var basisAmount: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:BasisAmount', 0);
     var ratePercent: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:RateApplicablePercent', 0);
     var taxType: ZUGFeRDNullable<TZUGFeRDTaxTypes> := TEnumExtensions<TZUGFeRDTaxTypes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:TypeCode'));
@@ -517,6 +533,9 @@ begin
     var taxTypeCode: ZUGFeRDNullable<TZUGFeRDTaxTypes> := TEnumExtensions<TZUGFeRDTaxTypes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:CategoryTradeTax/ram:TypeCode'));
     var taxCategoryCode: ZUGFeRDNullable<TZUGFeRDTaxCategoryCodes> := TEnumExtensions<TZUGFeRDTaxCategoryCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:CategoryTradeTax/ram:CategoryCode'));
     var taxPercent: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:CategoryTradeTax/ram:RateApplicablePercent', 0);
+    var taxExemptionReason: string := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:CategoryTradeTax/ram:ExemptionReason');
+    var taxExemptionReasonCode: ZUGFeRDNullable<TZUGFeRDTaxExemptionReasonCodes> := TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.StringToNullableEnum(
+      TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:CategoryTradeTax/ram:ExemptionReasonCode'));
     if TZUGFeRDXmlUtils.NodeAsBool(nodes[i], './/ram:ChargeIndicator') then
     begin
       var chargeReasonCode: ZUGFeRDNullable<TZUGFeRDChargeReasonCodes> := TEnumExtensions<TZUGFeRDChargeReasonCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ReasonCode'));
@@ -527,6 +546,8 @@ begin
       var allowanceReasonCode: ZUGFeRDNullable<TZUGFeRDAllowanceReasonCodes> := TEnumExtensions<TZUGFeRDAllowanceReasonCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ReasonCode'));
       Result.AddTradeAllowance(basisAmount, Result.Currency, actualAmount, chargePercentage, reason, taxTypeCode, taxCategoryCode, taxPercent, allowanceReasonCode);
     end;
+    Result.TradeAllowanceCharges.Last.Tax.ExemptionReason := taxExemptionReason;
+    Result.TradeAllowanceCharges.Last.Tax.ExemptionReasonCode := taxExemptionReasonCode;
   end;
 
   nodes := doc.SelectNodes('//ram:SpecifiedLogisticsServiceCharge');
@@ -609,6 +630,67 @@ begin
       TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ID'),
       TEnumExtensions<TZUGFeRDAccountingAccountTypeCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:TypeCode')));
 
+  // Vorauszahlungen / Anzahlungen, BG-X-45 (nur EXTENDED)
+  // Fehlende oder unlesbare Pflichtbeträge und Steuercodes wie die übrigen
+  // Zahlen-/Enum-Helfer als leere Nullable lesen, damit der übrige Beleg lesbar bleibt.
+  // Die Ausgabe bleibt streng: insbesondere BT-X-293 nach FX-SCH-A-000952 ist Pflicht.
+  // Nullable unterscheidet fehlende und unlesbare Werte nicht; Datumsfehler bleiben unverändert.
+  nodes := doc.SelectNodes('//ram:ApplicableHeaderTradeSettlement/ram:SpecifiedAdvancePayment');
+  for i := 0 to nodes.length-1 do
+  begin
+    var advancePayment: TZUGFeRDAdvancePayment := TZUGFeRDAdvancePayment.Create;
+    try
+      advancePayment.PaidAmount := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:PaidAmount');
+      advancePayment.FormattedReceivedDateTime := TZUGFeRDXmlUtils.NodeAsDateTime(nodes[i],
+        './ram:FormattedReceivedDateTime/qdt:DateTimeString');
+
+      var taxNodes: IXMLDOMNodeList := nodes[i].selectNodes('./ram:IncludedTradeTax');
+
+      for var taxIndex: Integer := 0 to taxNodes.length-1 do
+      begin
+        var taxAmount: ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(
+          taxNodes[taxIndex], './ram:CalculatedAmount');
+        var taxTypeCode: ZUGFeRDNullable<TZUGFeRDTaxTypes> :=
+          TEnumExtensions<TZUGFeRDTaxTypes>.StringToNullableEnum(
+            TZUGFeRDXmlUtils.NodeAsString(taxNodes[taxIndex], './ram:TypeCode'));
+        var taxCategoryCode: ZUGFeRDNullable<TZUGFeRDTaxCategoryCodes> :=
+          TEnumExtensions<TZUGFeRDTaxCategoryCodes>.StringToNullableEnum(
+            TZUGFeRDXmlUtils.NodeAsString(taxNodes[taxIndex], './ram:CategoryCode'));
+        var includedTax: TZUGFeRDTax := TZUGFeRDTax.Create;
+        try
+          includedTax.TaxAmount := taxAmount;
+          includedTax.TypeCode := taxTypeCode;
+          includedTax.CategoryCode := taxCategoryCode;
+          includedTax.Percent := TZUGFeRDXmlUtils.NodeAsDecimal(
+            taxNodes[taxIndex], './ram:RateApplicablePercent', 0).Value;
+          advancePayment.IncludedTradeTaxes.Add(includedTax);
+          includedTax := nil;
+        finally
+          includedTax.Free;
+        end;
+      end;
+
+      if nodes[i].selectSingleNode('./ram:InvoiceSpecifiedReferencedDocument') <> nil then
+      begin
+        var invoiceReferenceID: string := TZUGFeRDXmlUtils.NodeAsString(nodes[i],
+          './ram:InvoiceSpecifiedReferencedDocument/ram:IssuerAssignedID');
+
+        advancePayment.SetInvoiceReferencedDocument(
+          invoiceReferenceID,
+          TZUGFeRDXmlUtils.NodeAsDateTime(nodes[i],
+            './ram:InvoiceSpecifiedReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString'),
+          TEnumExtensions<TZUGFeRDInvoiceType>.StringToNullableEnum(
+            TZUGFeRDXmlUtils.NodeAsString(nodes[i],
+              './ram:InvoiceSpecifiedReferencedDocument/ram:TypeCode')));
+      end;
+
+      Result.AdvancePayments.Add(advancePayment);
+      advancePayment := nil;
+    finally
+      advancePayment.Free;
+    end;
+  end;
+
   Result.OrderDate:= TZUGFeRDXmlUtils.NodeAsDateTime(doc.DocumentElement, '//ram:ApplicableHeaderTradeAgreement/ram:BuyerOrderReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
   Result.OrderNo := TZUGFeRDXmlUtils.NodeAsString(doc.DocumentElement, '//ram:ApplicableHeaderTradeAgreement/ram:BuyerOrderReferencedDocument/ram:IssuerAssignedID');
 
@@ -638,6 +720,10 @@ begin
   nodes := doc.SelectNodes('//ram:IncludedSupplyChainTradeLineItem');
   for i := 0 to nodes.length-1 do
     Result.TradeLineItems.Add(_parseTradeLineItem(nodes[i]));
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
 function TZUGFeRDInvoiceDescriptor23CIIReader._parseTradeLineItem(tradeLineItem: IXmlDomNode): TZUGFeRDTradeLineItem;
@@ -658,109 +744,198 @@ begin
     TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:AssociatedDocumentLineDocument/ram:LineStatusReasonCode'));
 
   Result := TZUGFeRDTradeLineItem.Create(lineId);
+  try
+    Result.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:GlobalID/@schemeID'));
+    Result.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:GlobalID');
+    Result.SellerAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:SellerAssignedID');
+    Result.BuyerAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BuyerAssignedID');
+    Result.IndustryAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:IndustryAssignedID');
+    Result.ModelID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:ModelID');
+    Result.Name := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:Name');
+    Result.Description := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:Description');
+    Result.BatchID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BatchID');
+    Result.BrandName := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BrandName');
+    Result.ModelName := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:ModelName');
+    Result.BilledQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:BilledQuantity', 0);
+    Result.ShipTo := _nodeAsParty(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ShipToTradeParty');
+    Result.ShipToContact := _nodeAsContact(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ShipToTradeParty/ram:DefinedTradeContact');
+    Result.UltimateShipTo := _nodeAsParty(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:UltimateShipToTradeParty');
+    Result.UltimateShipToContact := _nodeAsContact(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:UltimateShipToTradeParty/ram:DefinedTradeContact');
+    Result.ChargeFreeQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:ChargeFreeQuantity');
+    Result.PackageQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:PackageQuantity');
+    Result.LineTotalAmount:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:LineTotalAmount');
+    Result.TaxCategoryCode := TEnumExtensions<TZUGFeRDTaxCategoryCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:CategoryCode'));
+    Result.TaxType := TEnumExtensions<TZUGFeRDTaxTypes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:TypeCode'));
+    Result.TaxPercent := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:ApplicableTradeTax/ram:RateApplicablePercent', 0);
+    Result.TaxExemptionReasonCode := TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:ExemptionReasonCode'));
+    Result.TaxExemptionReason := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:ExemptionReason');
+    Result.NetUnitPrice:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:ChargeAmount');
+    Result.NetQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:BasisQuantity');
+    Result.NetUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:BasisQuantity/@unitCode'));
+    Result.GrossUnitPrice:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:ChargeAmount');
+    Result.GrossQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:BasisQuantity');
+    Result.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:BilledQuantity/@unitCode'));
+    Result.ChargeFreeUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ChargeFreeQuantity/@unitCode'));
+    Result.PackageUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:PackageQuantity/@unitCode'));
+    Result.GrossUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:BasisQuantity/@unitCode'));
+    Result.BillingPeriodStart := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:BillingSpecifiedPeriod/ram:StartDateTime/udt:DateTimeString');
+    Result.BillingPeriodEnd := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:BillingSpecifiedPeriod/ram:EndDateTime/udt:DateTimeString');
 
-  Result.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:GlobalID/@schemeID'));
-  Result.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:GlobalID');
-  Result.SellerAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:SellerAssignedID');
-  Result.BuyerAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BuyerAssignedID');
-  Result.IndustryAssignedID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:IndustryAssignedID');
-  Result.ModelID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:ModelID');
-  Result.Name := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:Name');
-  Result.Description := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:Description');
-  Result.BatchID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BatchID');
-  Result.BrandName := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:BrandName');
-  Result.ModelName := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedTradeProduct/ram:ModelName');
-  Result.BilledQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:BilledQuantity', 0);
-  Result.ShipTo := _nodeAsParty(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ShipToTradeParty');
-  Result.ShipToContact := _nodeAsContact(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ShipToTradeParty/ram:DefinedTradeContact');
-  Result.UltimateShipTo := _nodeAsParty(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:UltimateShipToTradeParty');
-  Result.UltimateShipToContact := _nodeAsContact(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:UltimateShipToTradeParty/ram:DefinedTradeContact');
-  Result.ChargeFreeQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:ChargeFreeQuantity');
-  Result.PackageQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:PackageQuantity');
-  Result.LineTotalAmount:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:LineTotalAmount');
-  Result.TaxCategoryCode := TEnumExtensions<TZUGFeRDTaxCategoryCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:CategoryCode'));
-  Result.TaxType := TEnumExtensions<TZUGFeRDTaxTypes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:TypeCode'));
-  Result.TaxPercent := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:ApplicableTradeTax/ram:RateApplicablePercent', 0);
-  Result.TaxExemptionReasonCode := TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:ExemptionReasonCode'));
-  Result.TaxExemptionReason := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ApplicableTradeTax/ram:ExemptionReason');
-  Result.NetUnitPrice:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:ChargeAmount');
-  Result.NetQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:BasisQuantity');
-  Result.NetUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:NetPriceProductTradePrice/ram:BasisQuantity/@unitCode'));
-  Result.GrossUnitPrice:= TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:ChargeAmount');
-  Result.GrossQuantity := TZUGFeRDXmlUtils.NodeAsDecimal(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:BasisQuantity');
-  Result.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:BilledQuantity/@unitCode'));
-  Result.ChargeFreeUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:ChargeFreeQuantity/@unitCode'));
-  Result.PackageUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:PackageQuantity/@unitCode'));
-  Result.GrossUnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:GrossPriceProductTradePrice/ram:BasisQuantity/@unitCode'));
-  Result.BillingPeriodStart := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:BillingSpecifiedPeriod/ram:StartDateTime/udt:DateTimeString');
-  Result.BillingPeriodEnd := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:BillingSpecifiedPeriod/ram:EndDateTime/udt:DateTimeString');
+    if parentLineId<>'' then
+      Result.SetParentLineId(parentLineId);
 
-  if parentLineId<>'' then
-    Result.SetParentLineId(parentLineId);
+    // Beide Felder werden unabhaengig voneinander uebernommen: die offiziellen
+    // ZUGFeRD-Beispiele nutzen LineStatusReasonCode (BT-X-9) auch ohne
+    // LineStatusCode (BT-X-8), z.B. in den Abschlagsrechnungen mit SubInvoiceLine.
+    if lineStatusCode.HasValue then
+      Result.AssociatedDocument.LineStatusCode := lineStatusCode;
+    if lineStatusReasonCode.HasValue then
+      Result.AssociatedDocument.LineStatusReasonCode := lineStatusReasonCode;
 
-  if lineStatusCode.HasValue and LineStatusReasonCode.HasValue then
-    Result.SetLineStatus(lineStatusCode.Value, LineStatusReasonCode.Value);
-
-  nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedTradeProduct/ram:ApplicableProductCharacteristic');
-  for i := 0 to nodes.length-1 do
-  begin
-    var apcItem : TZUGFeRDApplicableProductCharacteristic := TZUGFeRDApplicableProductCharacteristic.Create;
-    apcItem.Description := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Description');
-    apcItem.Value := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Value');
-    Result.ApplicableProductCharacteristics.Add(apcItem);
-  end;
-
-  nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedTradeProduct/ram:IncludedReferencedProduct');
-  for i := 0 to nodes.length-1 do
-  begin
-    var irpItem: TZUGFeRDIncludedReferencedProduct := TZUGFeRDIncludedReferencedProduct.Create;
-    irpItem.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:GlobalID/@schemeID'));
-    irpItem.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:GlobalID');
-    irpItem.SellerAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:SellerAssignedID');
-    irpItem.BuyerAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:BuyerAssignedID');
-    irpItem.IndustryAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:IndustryAssignedID');
-    irpItem.Name := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Name');
-    irpItem.Description := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Description');
-    irpItem.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:UnitQuantity/@unitCode'));
-    irpItem.UnitQuantity:= TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:UnitQuantity');
-    Result.IncludedReferencedProducts.Add(irpItem);
-  end;
-
-  if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument') <> nil) then
-  begin
-    Result.BuyerOrderReferencedDocument:= TZUGFeRDBuyerOrderReferencedDocument.Create;
-    Result.BuyerOrderReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:IssuerAssignedID');
-    Result.BuyerOrderReferencedDocument.IssueDateTime := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
-    Result.BuyerOrderReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:LineID');
-  end;
-
-  if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument') <> nil) then
-  begin
-    Result.SellerOrderReferencedDocument:= TZUGFeRDSellerOrderReferencedDocument.Create;
-    Result.SellerOrderReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument/ram:IssuerAssignedID');
-    Result.SellerOrderReferencedDocument.IssueDateTime := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
-  end;
-
-  if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument') <> nil) then
-  begin
-    Result.ContractReferencedDocument := TZUGFeRDContractReferencedDocument.Create;
-    Result.ContractReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:IssuerAssignedID');
-    Result.ContractReferencedDocument.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
-    Result.ContractReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:LineID');
-  end;
-
-  // read SpecifiedLineTradeSettlement
-  if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement') <> nil) then
-  begin
-    var applicableTradeTaxNode: IXMLDOMNode:= tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax');
-    // TODO: process
-
-    var billingSpecifiedPeriodNode: IXMLDOMNode := tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:BillingSpecifiedPeriod');
-    // TODO: process
-
-    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeAllowanceCharge');
+    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedTradeProduct/ram:ApplicableProductCharacteristic');
     for i := 0 to nodes.length-1 do
     begin
+      var apcItem : TZUGFeRDApplicableProductCharacteristic := TZUGFeRDApplicableProductCharacteristic.Create;
+      try
+        apcItem.Description := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Description');
+        apcItem.Value := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Value');
+        Result.ApplicableProductCharacteristics.Add(apcItem);
+      except
+        // Bis Add gelingt, gehört dieses Kind noch nicht zur teilweise geparsten Position.
+        apcItem.Free;
+        raise;
+      end;
+    end;
+
+    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedTradeProduct/ram:IncludedReferencedProduct');
+    for i := 0 to nodes.length-1 do
+    begin
+      var irpItem: TZUGFeRDIncludedReferencedProduct := TZUGFeRDIncludedReferencedProduct.Create;
+      try
+        irpItem.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:GlobalID/@schemeID'));
+        irpItem.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:GlobalID');
+        irpItem.SellerAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:SellerAssignedID');
+        irpItem.BuyerAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:BuyerAssignedID');
+        irpItem.IndustryAssignedID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:IndustryAssignedID');
+        irpItem.Name := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Name');
+        irpItem.Description := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Description');
+        irpItem.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:UnitQuantity/@unitCode'));
+        irpItem.UnitQuantity:= TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './/ram:UnitQuantity');
+        Result.IncludedReferencedProducts.Add(irpItem);
+      except
+        irpItem.Free;
+        raise;
+      end;
+    end;
+
+    if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument') <> nil) then
+    begin
+      Result.BuyerOrderReferencedDocument:= TZUGFeRDBuyerOrderReferencedDocument.Create;
+      Result.BuyerOrderReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:IssuerAssignedID');
+      Result.BuyerOrderReferencedDocument.IssueDateTime := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
+      Result.BuyerOrderReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:BuyerOrderReferencedDocument/ram:LineID');
+    end;
+
+    if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument') <> nil) then
+    begin
+      Result.SellerOrderReferencedDocument:= TZUGFeRDSellerOrderReferencedDocument.Create;
+      Result.SellerOrderReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument/ram:IssuerAssignedID');
+      Result.SellerOrderReferencedDocument.IssueDateTime := TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:SellerOrderReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
+    end;
+
+    if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument') <> nil) then
+    begin
+      Result.ContractReferencedDocument := TZUGFeRDContractReferencedDocument.Create;
+      Result.ContractReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:IssuerAssignedID');
+      Result.ContractReferencedDocument.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
+      Result.ContractReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeAgreement/ram:ContractReferencedDocument/ram:LineID');
+    end;
+
+    // read SpecifiedLineTradeSettlement
+    if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement') <> nil) then
+    begin
+      var applicableTradeTaxNode: IXMLDOMNode:= tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:ApplicableTradeTax');
+      // TODO: process
+
+      var billingSpecifiedPeriodNode: IXMLDOMNode := tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:BillingSpecifiedPeriod');
+      // TODO: process
+
+      nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeAllowanceCharge');
+      for i := 0 to nodes.length-1 do
+      begin
+        var chargeIndicator : Boolean := TZUGFeRDXmlUtils.NodeAsBool(nodes[i], './ram:ChargeIndicator/udt:Indicator');
+        var basisAmount : ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:BasisAmount');
+        var basisAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:BasisAmount/@currencyID');
+        var actualAmount : Currency := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:ActualAmount',0);
+        var actualAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ActualAmount/@currencyID');
+        var reason : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:Reason');
+        var chargePercentage: ZUGFeRDNullable<Currency> :=TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:CalculationPercent');
+        var reasonCode: String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ReasonCode');
+
+          if chargeIndicator then
+            Result.AddSpecifiedTradeCharge(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
+                                                               basisAmount,
+                                                               actualAmount,
+                                                               chargePercentage,
+                                                               reason,
+                                                               TEnumExtensions<TZUGFeRDChargeReasonCodes>.StringToNullableEnum(reasonCode))
+          else // allowance
+            Result.AddSpecifiedTradeAllowance(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
+                                                                  basisAmount,
+                                                                  actualAmount,
+                                                                  chargePercentage,
+                                                                  reason,
+                                                                  TEnumExtensions<TZUGFeRDAllowanceReasonCodes>.StringToNullableEnum(reasonCode));
+      end;
+
+      var specifiedTradeSettlementLineMonetarySummationNode: IXMLDOMNode:= tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeSettlementLineMonetarySummation');
+      if specifiedTradeSettlementLineMonetarySummationNode <> nil then
+        // Gesamtbetrag der Positionszu- und -abschlaege, nur EXTENDED
+        Result.TotalAllowanceChargeAmount := TZUGFeRDXmlUtils.NodeAsDecimal(
+          specifiedTradeSettlementLineMonetarySummationNode, './ram:TotalAllowanceChargeAmount');
+
+      nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:InvoiceReferencedDocument');
+      for i := 0 to nodes.length-1 do
+      begin
+        // TODO: process
+      end;
+    end;
+
+    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:AdditionalReferencedDocument');
+    for i := 0 to nodes.length-1 do
+      Result.AdditionalReferencedDocuments.Add(_getAdditionalReferencedDocument(nodes[i]));
+
+    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:ReceivableSpecifiedTradeAccountingAccount');
+    for i := 0 to nodes.length-1 do
+    begin
+      var rstaaItem : TZUGFeRDReceivableSpecifiedTradeAccountingAccount := TZUGFeRDReceivableSpecifiedTradeAccountingAccount.Create;
+      try
+        rstaaItem.TradeAccountID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ID');
+        rstaaItem.TradeAccountTypeCode := TEnumExtensions<TZUGFeRDAccountingAccountTypeCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:TypeCode'));
+        Result.ReceivableSpecifiedTradeAccountingAccounts.Add(rstaaItem);
+      except
+        rstaaItem.Free;
+        raise;
+      end;
+      break; // an if above would have done it also <g>
+    end;
+
+    if (tradeLineItem.SelectSingleNode('.//ram:AssociatedDocumentLineDocument') <> nil) then
+    begin
+      nodes := tradeLineItem.SelectNodes('.//ram:AssociatedDocumentLineDocument/ram:IncludedNote');
+      for i := 0 to nodes.length-1 do
+        Result.AssociatedDocument.Notes.Add(
+          TZUGFeRDNote.Create(
+              TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Content'),
+              TEnumExtensions<TZUGFeRDSubjectCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:SubjectCode')),
+              TEnumExtensions<TZUGFeRDContentCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ContentCode'))
+        ));
+    end;
+
+    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeAgreement/ram:GrossPriceProductTradePrice/ram:AppliedTradeAllowanceCharge');
+    for i := 0 to nodes.length-1 do
+    begin
+
       var chargeIndicator : Boolean := TZUGFeRDXmlUtils.NodeAsBool(nodes[i], './ram:ChargeIndicator/udt:Indicator');
       var basisAmount : ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:BasisAmount');
       var basisAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:BasisAmount/@currencyID');
@@ -768,116 +943,56 @@ begin
       var actualAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ActualAmount/@currencyID');
       var reason : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:Reason');
       var chargePercentage: ZUGFeRDNullable<Currency> :=TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:CalculationPercent');
-      var reasonCode: String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ReasonCode');
 
-        if chargeIndicator then
-          Result.AddSpecifiedTradeCharge(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
-                                                             basisAmount,
-                                                             actualAmount,
-                                                             chargePercentage,
-                                                             reason,
-                                                             TEnumExtensions<TZUGFeRDChargeReasonCodes>.StringToNullableEnum(reasonCode))
-        else // allowance
-          Result.AddSpecifiedTradeAllowance(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
-                                                                basisAmount,
-                                                                actualAmount,
-                                                                chargePercentage,
-                                                                reason,
-                                                                TEnumExtensions<TZUGFeRDAllowanceReasonCodes>.StringToNullableEnum(reasonCode));
+      if chargeIndicator then // charge
+        Result.AddTradeCharge(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
+                                      basisAmount,
+                                      actualAmount,
+                                      chargePercentage,
+                                      reason)
+      else // allowance
+        Result.AddTradeAllowance(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
+                                      basisAmount,
+                                      actualAmount,
+                                      chargePercentage,
+                                      reason);
     end;
 
-    var specifiedTradeSettlementLineMonetarySummationNode: IXMLDOMNode:= tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeSettlement/ram:SpecifiedTradeSettlementLineMonetarySummation');
-    // TODO: process
+    if not Result.UnitCode.HasValue then
+      // UnitCode alternativ aus BilledQuantity extrahieren
+      Result.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:BilledQuantity/@unitCode'));
 
-    nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:InvoiceReferencedDocument');
+    if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:IssuerAssignedID') <> nil) then
+    begin
+      Result.DeliveryNoteReferencedDocument := TZUGFeRDDeliveryNoteReferencedDocument.Create;
+      Result.DeliveryNoteReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:IssuerAssignedID');
+      Result.DeliveryNoteReferencedDocument.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
+      Result.DeliveryNoteReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:LineID');
+    end;
+
+    if tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime') <> nil then
+      Result.ActualDeliveryDate:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString');
+
+    nodes := tradeLineItem.SelectNodes('.//ram:DesignatedProductClassification');
     for i := 0 to nodes.length-1 do
     begin
-      // TODO: process
+      var className : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassName');
+      var classCode : string := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode');
+      var listID : TZUGFeRDDesignatedProductClassificationClassCodes := TEnumExtensions<TZUGFeRDDesignatedProductClassificationClassCodes>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode/@listID'));
+      var listVersionID : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode/@listVersionID');
+      Result.AddDesignatedProductClassification(listID, listVersionID, classCode, className);
     end;
+
+    if tradeLineItem.SelectSingleNode('.//ram:OriginTradeCountry//ram:ID') <> nil then
+      Result.OriginTradeCountry := TEnumExtensions<TZUGFeRDCountryCodes>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:OriginTradeCountry//ram:ID'));
+  except
+    // Load kann diese Position erst freigeben, wenn sie zurückgegeben und in TradeLineItems aufgenommen wurde.
+    Result.Free;
+    raise;
   end;
-
-  nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:AdditionalReferencedDocument');
-  for i := 0 to nodes.length-1 do
-    Result.AdditionalReferencedDocuments.Add(_getAdditionalReferencedDocument(nodes[i]));
-
-  nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeSettlement/ram:ReceivableSpecifiedTradeAccountingAccount');
-  for i := 0 to nodes.length-1 do
-  begin
-    var rstaaItem : TZUGFeRDReceivableSpecifiedTradeAccountingAccount := TZUGFeRDReceivableSpecifiedTradeAccountingAccount.Create;
-    rstaaItem.TradeAccountID := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ID');
-    rstaaItem.TradeAccountTypeCode := TEnumExtensions<TZUGFeRDAccountingAccountTypeCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:TypeCode'));
-    Result.ReceivableSpecifiedTradeAccountingAccounts.Add(rstaaItem);
-    break; // an if above would have done it also <g>
-  end;
-
-  if (tradeLineItem.SelectSingleNode('.//ram:AssociatedDocumentLineDocument') <> nil) then
-  begin
-    nodes := tradeLineItem.SelectNodes('.//ram:AssociatedDocumentLineDocument/ram:IncludedNote');
-    for i := 0 to nodes.length-1 do
-      Result.AssociatedDocument.Notes.Add(
-        TZUGFeRDNote.Create(
-            TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:Content'),
-            TEnumExtensions<TZUGFeRDSubjectCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:SubjectCode')),
-            TEnumExtensions<TZUGFeRDContentCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ContentCode'))
-      ));
-  end;
-
-  nodes := tradeLineItem.SelectNodes('.//ram:SpecifiedLineTradeAgreement/ram:GrossPriceProductTradePrice/ram:AppliedTradeAllowanceCharge');
-  for i := 0 to nodes.length-1 do
-  begin
-
-    var chargeIndicator : Boolean := TZUGFeRDXmlUtils.NodeAsBool(nodes[i], './ram:ChargeIndicator/udt:Indicator');
-    var basisAmount : ZUGFeRDNullable<Currency> := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:BasisAmount');
-    var basisAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:BasisAmount/@currencyID');
-    var actualAmount : Currency := TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:ActualAmount',0);
-    var actualAmountCurrency : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:ActualAmount/@currencyID');
-    var reason : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './ram:Reason');
-    var chargePercentage: ZUGFeRDNullable<Currency> :=TZUGFeRDXmlUtils.NodeAsDecimal(nodes[i], './ram:CalculationPercent');
-
-    if chargeIndicator then // charge
-      Result.AddTradeCharge(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
-                                    basisAmount,
-                                    actualAmount,
-                                    chargePercentage,
-                                    reason)
-    else // allowance
-      Result.AddTradeAllowance(TEnumExtensions<TZUGFeRDCurrencyCodes>.StringToEnum(basisAmountCurrency),
-                                    basisAmount,
-                                    actualAmount,
-                                    chargePercentage,
-                                    reason);
-  end;
-
-  if not Result.UnitCode.HasValue then
-    // UnitCode alternativ aus BilledQuantity extrahieren
-    Result.UnitCode := TEnumExtensions<TZUGFeRDQuantityCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:BilledQuantity/@unitCode'));
-
-  if (tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:IssuerAssignedID') <> nil) then
-  begin
-    Result.DeliveryNoteReferencedDocument := TZUGFeRDDeliveryNoteReferencedDocument.Create;
-    Result.DeliveryNoteReferencedDocument.ID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:IssuerAssignedID');
-    Result.DeliveryNoteReferencedDocument.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:FormattedIssueDateTime/qdt:DateTimeString');
-    Result.DeliveryNoteReferencedDocument.LineID := TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:DeliveryNoteReferencedDocument/ram:LineID');
-  end;
-
-  if tradeLineItem.SelectSingleNode('.//ram:SpecifiedLineTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime') <> nil then
-    Result.ActualDeliveryDate:= TZUGFeRDXmlUtils.NodeAsDateTime(tradeLineItem, './/ram:SpecifiedLineTradeDelivery/ram:ActualDeliverySupplyChainEvent/ram:OccurrenceDateTime/udt:DateTimeString');
-
-  nodes := tradeLineItem.SelectNodes('.//ram:DesignatedProductClassification');
-  for i := 0 to nodes.length-1 do
-  begin
-    var className : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassName');
-    var classCode : string := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode');
-    var listID : TZUGFeRDDesignatedProductClassificationClassCodes := TEnumExtensions<TZUGFeRDDesignatedProductClassificationClassCodes>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode/@listID'));
-    var listVersionID : String := TZUGFeRDXmlUtils.NodeAsString(nodes[i], './/ram:ClassCode/@listVersionID');
-    Result.AddDesignatedProductClassification(listID, listVersionID, classCode, className);
-  end;
-
-  if tradeLineItem.SelectSingleNode('.//ram:OriginTradeCountry//ram:ID') <> nil then
-    Result.OriginTradeCountry := TEnumExtensions<TZUGFeRDCountryCodes>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(tradeLineItem, './/ram:OriginTradeCountry//ram:ID'));
-
 end;
 
+/// <summary>Liest die XML-Felder vor der Konstruktion; scheitert der Konstruktor, gibt er seine Instanz selbst frei.</summary>
 function TZUGFeRDInvoiceDescriptor23CIIReader._nodeAsLegalOrganization(
   basenode: IXmlDomNode; const xpath: string) : TZUGFeRDLegalOrganization;
 var
@@ -895,6 +1010,7 @@ begin
                TZUGFeRDXmlUtils.NodeAsString(node, 'ram:TradingBusinessName'));
 end;
 
+/// <summary>Übergibt das geparste Ergebnis erst nach erfolgreichem Laden an den Aufrufer.</summary>
 function TZUGFeRDInvoiceDescriptor23CIIReader._nodeAsContact(basenode: IXmlDomNode;  const xpath: string) : TZUGFeRDContact;
 var
   node : IXmlDomNode;
@@ -906,13 +1022,19 @@ begin
   if (node = nil) then
     exit;
   Result := TZUGFeRDContact.Create;
-  Result.Name := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PersonName');
-  Result.OrgUnit := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:DepartmentName');
-  Result.PhoneNo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:TelephoneUniversalCommunication/ram:CompleteNumber');
-  Result.FaxNo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:FaxUniversalCommunication/ram:CompleteNumber');
-  Result.EmailAddress := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:EmailURIUniversalCommunication/ram:URIID');
+  try
+    Result.Name := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PersonName');
+    Result.OrgUnit := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:DepartmentName');
+    Result.PhoneNo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:TelephoneUniversalCommunication/ram:CompleteNumber');
+    Result.FaxNo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:FaxUniversalCommunication/ram:CompleteNumber');
+    Result.EmailAddress := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:EmailURIUniversalCommunication/ram:URIID');
+  except
+    Result.Free;
+    raise;
+  end;
 end;
 
+/// <summary>Übergibt das geparste Ergebnis erst nach erfolgreichem Laden an den Aufrufer.</summary>
 function TZUGFeRDInvoiceDescriptor23CIIReader._nodeAsParty(basenode: IXmlDomNode;  const xpath: string) : TZUGFeRDParty;
 var
   node : IXmlDomNode;
@@ -925,53 +1047,64 @@ begin
   if (node = nil) then
     exit;
   Result := TZUGFeRDParty.Create;
-  Result.ID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:ID/@schemeID'));
-  Result.ID.ID := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:ID');
-  Result.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:GlobalID/@schemeID'));
-  Result.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:GlobalID');
-  Result.Name := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:Name');
-  Result.Description := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:Description'); // Seller only BT-33
-  Result.Postcode := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:PostcodeCode');
-  Result.City := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CityName');
-  Result.Country := TEnumExtensions<TZUGFeRDCountryCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CountryID'));
-  Result.SpecifiedLegalOrganization := _nodeAsLegalOrganization(node, 'ram:SpecifiedLegalOrganization');
+  try
+    Result.ID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:ID/@schemeID'));
+    Result.ID.ID := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:ID');
+    Result.GlobalID.SchemeID := TEnumExtensions<TZUGFeRDGlobalIDSchemeIdentifiers>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:GlobalID/@schemeID'));
+    Result.GlobalID.ID := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:GlobalID');
+    Result.Name := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:Name');
+    Result.Description := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:Description'); // Seller only BT-33
+    Result.Postcode := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:PostcodeCode');
+    Result.City := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CityName');
+    Result.Country := TEnumExtensions<TZUGFeRDCountryCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CountryID'));
+    Result.SpecifiedLegalOrganization := _nodeAsLegalOrganization(node, 'ram:SpecifiedLegalOrganization');
 
-  lineOne := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineOne');
-  lineTwo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineTwo');
+    lineOne := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineOne');
+    lineTwo := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineTwo');
 
-  if (not lineTwo.IsEmpty) then
-  begin
-    Result.Street2 := lineOne;
-    Result.ContactName := lineOne; // backward compatibility
-    Result.Street := lineTwo;
-  end else
-  begin
-    Result.Street := lineOne;
-    Result.Street2 := '';
-    Result.ContactName := '';
+    if (not lineTwo.IsEmpty) then
+    begin
+      Result.Street2 := lineOne;
+      Result.ContactName := lineOne; // backward compatibility
+      Result.Street := lineTwo;
+    end else
+    begin
+      Result.Street := lineOne;
+      Result.Street2 := '';
+      Result.ContactName := '';
+    end;
+    Result.AddressLine3 := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineThree');
+    Result.CountrySubdivisionName := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CountrySubDivisionName');
+  except
+    Result.Free;
+    raise;
   end;
-  Result.AddressLine3 := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:LineThree');
-  Result.CountrySubdivisionName := TZUGFeRDXmlUtils.NodeAsString(node, 'ram:PostalTradeAddress/ram:CountrySubDivisionName');
 end;
 
 function TZUGFeRDInvoiceDescriptor23CIIReader._getAdditionalReferencedDocument(a_oXmlNode: IXmlDomNode): TZUGFeRDAdditionalReferencedDocument;
 begin
   var strBase64BinaryData : String := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:AttachmentBinaryObject');
   Result := TZUGFeRDAdditionalReferencedDocument.Create(false);
-  Result.ID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:IssuerAssignedID');
-  Result.TypeCode := TEnumExtensions<TZUGFeRDAdditionalReferencedDocumentTypeCode>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:TypeCode'));
-  Result.Name := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:Name');
-  Result.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(a_oXmlNode, 'ram:FormattedIssueDateTime/qdt:DateTimeString');
-  if strBase64BinaryData <> '' then
-  begin
-    Result.AttachmentBinaryObject := TMemoryStream.Create;
-    var strBase64BinaryDataBytes : TBytes := TNetEncoding.Base64.DecodeStringToBytes(strBase64BinaryData);
-    Result.AttachmentBinaryObject.Write(strBase64BinaryDataBytes,Length(strBase64BinaryDataBytes));
+  try
+    Result.ID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:IssuerAssignedID');
+    Result.TypeCode := TEnumExtensions<TZUGFeRDAdditionalReferencedDocumentTypeCode>.StringToEnum(TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:TypeCode'));
+    Result.Name := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:Name');
+    Result.IssueDateTime:= TZUGFeRDXmlUtils.NodeAsDateTime(a_oXmlNode, 'ram:FormattedIssueDateTime/qdt:DateTimeString');
+    if strBase64BinaryData <> '' then
+    begin
+      Result.AttachmentBinaryObject := TMemoryStream.Create;
+      var strBase64BinaryDataBytes : TBytes := TNetEncoding.Base64.DecodeStringToBytes(strBase64BinaryData);
+      Result.AttachmentBinaryObject.Write(strBase64BinaryDataBytes,Length(strBase64BinaryDataBytes));
+    end;
+    Result.Filename := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:AttachmentBinaryObject/@filename');
+    Result.ReferenceTypeCode := TEnumExtensions<TZUGFeRDReferenceTypeCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:ReferenceTypeCode'));
+    Result.URIID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:URIID');
+    Result.LineID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:LineID');
+  except
+    // Die Referenz besitzt den Stream auch dann, wenn das Dekodieren oder ein späteres Feld scheitert.
+    Result.Free;
+    raise;
   end;
-  Result.Filename := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:AttachmentBinaryObject/@filename');
-  Result.ReferenceTypeCode := TEnumExtensions<TZUGFeRDReferenceTypeCodes>.StringToNullableEnum(TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:ReferenceTypeCode'));
-  Result.URIID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:URIID');
-  Result.LineID := TZUGFeRDXmlUtils.NodeAsString(a_oXmlNode, 'ram:LineID');
 end;
 
 end.

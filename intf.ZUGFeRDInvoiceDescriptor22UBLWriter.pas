@@ -1,4 +1,4 @@
-{* Licensed to the Apache Software Foundation (ASF) under one
+﻿{* Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
@@ -94,15 +94,7 @@ type
     function _IsInvoiceAccordingToUBLSpecification(type_: TZUGFeRDInvoiceType): Boolean;
     function _mapTaxRegistrationSchemeID(schemeID: TZUGFeRDTaxRegistrationSchemeID): string;
     function GetNameSpaces(isInvoice: Boolean): TDictionary<string, string>;
-  private const
-    ALL_PROFILES = [TZUGFeRDProfile.Minimum,
-                    TZUGFeRDProfile.BasicWL,
-                    TZUGFeRDProfile.Basic,
-                    TZUGFeRDProfile.Comfort,
-                    TZUGFeRDProfile.Extended,
-                    TZUGFeRDProfile.XRechnung1,
-                    TZUGFeRDProfile.XRechnung,
-                    TZUGFeRDProfile.EReporting];
+    function _validateProfile(_descriptor: TZUGFeRDInvoiceDescriptor; _throwExceptions: Boolean): Boolean;
   public
     function Validate(_descriptor: TZUGFeRDInvoiceDescriptor; _throwExceptions: Boolean = True): Boolean; override;
     procedure Save(_descriptor: TZUGFeRDInvoiceDescriptor; _stream: TStream; _format : TZUGFeRDFormats = TZUGFeRDFormats.CII; options: TZUGFeRDInvoiceFormatOptions = Nil); override;
@@ -144,6 +136,10 @@ var
 begin
   if (_stream = nil) then
     raise TZUGFeRDIllegalStreamException.Create('Cannot write to stream');
+
+  // Bei direkter Nutzung des Writers gilt dieselbe Profilgrenze wie im Dispatcher
+  _validateProfile(_descriptor, True);
+  ValidateTaxAmounts(_descriptor, True);
 
   streamPosition := _stream.Position;
 
@@ -213,8 +209,18 @@ begin
 
   Writer.WriteElementString('cbc:DocumentCurrencyCode', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.Currency));
 
-  // BT-6
-  if Descriptor.TaxCurrency.HasValue then
+  // BT-6 und BT-111 gehören zusammen: BR-53 verlangt zu einem vorhandenen
+  // Steuerwährungscode einen Steuerbetrag in eben dieser Währung. Die Bedingung
+  // wird deshalb einmal gebildet und an beiden Stellen verwendet - sonst entsteht
+  // ein BT-6 ohne BT-111, sobald der Betrag in Abrechnungswährung fehlt.
+  var writeAccountingCurrency: Boolean :=
+    Descriptor.TaxCurrency.HasValue and
+    (Descriptor.TaxCurrency.Value <> Descriptor.Currency) and
+    Descriptor.TaxTotalAmountInAccountingCurrency.HasValue and
+    (Descriptor.Taxes.Count > 0) and
+    Descriptor.TaxTotalAmount.HasValue;
+
+  if writeAccountingCurrency then
     Writer.WriteElementString('cbc:TaxCurrencyCode', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.TaxCurrency.Value));
 
   // BT-19
@@ -275,6 +281,14 @@ begin
     Writer.WriteStartElement('cac:DespatchDocumentReference');
     Writer.WriteOptionalElementString('cbc:ID', Descriptor.DespatchAdviceReferencedDocument.ID);
     Writer.WriteEndElement; // !DespatchDocumentReference
+  end;
+
+  // ReceiptDocumentReference (BT-15)
+  if Descriptor.ReceivingAdviceReferencedDocument <> nil then
+  begin
+    Writer.WriteStartElement('cac:ReceiptDocumentReference');
+    Writer.WriteOptionalElementString('cbc:ID', Descriptor.ReceivingAdviceReferencedDocument.ID);
+    Writer.WriteEndElement; // !ReceiptDocumentReference
   end;
 
   // ContractDocumentReference
@@ -547,10 +561,14 @@ begin
       if tax.CategoryCode <> TZUGFeRDTaxCategoryCodes.O then // BR-O-05
         Writer.WriteElementString('cbc:Percent', _formatDecimal(tax.Percent));
 
-      if tax.ExemptionReasonCode.HasValue then
-        Writer.WriteElementString('cbc:TaxExemptionReasonCode', TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.EnumToString(tax.ExemptionReasonCode.Value));
+      // BR-Z-10: Steuerkategorie Z darf keinen Befreiungsgrund enthalten.
+      if (not tax.CategoryCode.HasValue) or (tax.CategoryCode.Value <> TZUGFeRDTaxCategoryCodes.Z) then
+      begin
+        if tax.ExemptionReasonCode.HasValue then
+          Writer.WriteElementString('cbc:TaxExemptionReasonCode', TEnumExtensions<TZUGFeRDTaxExemptionReasonCodes>.EnumToString(tax.ExemptionReasonCode.Value));
 
-      Writer.WriteOptionalElementString('cbc:TaxExemptionReason', tax.ExemptionReason);
+        Writer.WriteOptionalElementString('cbc:TaxExemptionReason', tax.ExemptionReason);
+      end;
       Writer.WriteStartElement('cac:TaxScheme');
       Writer.WriteElementString('cbc:ID', TEnumExtensions<TZUGFeRDTaxTypes>.EnumToString(tax.TypeCode));
       Writer.WriteEndElement; // !TaxScheme
@@ -559,6 +577,17 @@ begin
       Writer.WriteEndElement; // !TaxSubtotal
     end;
 
+    Writer.WriteEndElement; // !TaxTotal
+  end;
+
+  if writeAccountingCurrency then
+  begin
+    // BT-111 wird als eigene TaxTotal-Gruppe ohne TaxSubtotal geschrieben.
+    Writer.WriteStartElement('cac:TaxTotal');
+    Writer.WriteStartElement('cbc:TaxAmount');
+    Writer.WriteAttributeString('currencyID', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.TaxCurrency.Value));
+    Writer.WriteValue(_formatDecimal(Descriptor.TaxTotalAmountInAccountingCurrency.Value, 2));
+    Writer.WriteEndElement; // !TaxAmount
     Writer.WriteEndElement; // !TaxTotal
   end;
 
@@ -655,6 +684,7 @@ begin
 end;
 
 
+
 procedure TZUGFeRDInvoiceDescriptor22UBLWriter._WriteTradeLineItem(
   tradeLineItem: TZUGFeRDTradeLineItem; isInvoice: Boolean;
   options: TZUGFeRDInvoiceFormatOptions);
@@ -664,6 +694,7 @@ var
   specifiedTradeCharge : TZUGFeRDTradeCharge;
   subTradeLineItem : TZUGFeRDTradeLineItem;
   charges : TObjectList<TZUGFeRDAbstractTradeAllowanceCharge>;
+  lineTotalAmount: Currency;
 begin
   if tradeLineItem.AssociatedDocument.ParentLineID = '' then
   begin
@@ -708,7 +739,13 @@ begin
   Writer.WriteEndElement; // !InvoicedQuantity || CreditedQuantity
 
   WriteComment(Writer, options, TZUGFeRDInvoiceCommentConstants.SpecifiedTradeSettlementLineMonetarySummationComment);
-  _writeOptionalAmount(Writer, 'cbc:LineExtensionAmount', tradeLineItem.LineTotalAmount, 2, true);
+
+  lineTotalAmount := CalculateLineTotalAmount(tradeLineItem);
+
+  Writer.WriteStartElement('cbc:LineExtensionAmount');
+  Writer.WriteAttributeString('currencyID', TEnumExtensions<TZUGFeRDCurrencyCodes>.EnumToString(Descriptor.Currency));
+  Writer.WriteValue(_formatDecimal(lineTotalAmount, 2));
+  Writer.WriteEndElement; // !cbc:LineExtensionAmount
 
   if tradeLineItem.BillingPeriodStart.HasValue or tradeLineItem.BillingPeriodEnd.HasValue then
   begin
@@ -797,8 +834,16 @@ begin
 
   if tradeLineItem.NetQuantity.HasValue then
   begin
+    // BT-150 muss nach BR-65 der Einheit der berechneten Menge BT-130 entsprechen, ist aber
+    // ein eigenes Feld im Modell. Ist es gesetzt, wird es geschrieben, statt es still durch
+    // BT-130 zu ersetzen; fehlt es, dient BT-130 als Rueckfall. Der CII-Writer schreibt an
+    // dieser Stelle ebenfalls NetUnitCode.
+    var baseQuantityUnitCode: ZUGFeRDNullable<TZUGFeRDQuantityCodes> := tradeLineItem.NetUnitCode;
+    if not baseQuantityUnitCode.HasValue then
+      baseQuantityUnitCode := tradeLineItem.UnitCode;
+
     Writer.WriteStartElement('cbc:BaseQuantity'); // BT-149
-    Writer.WriteAttributeString('unitCode', TEnumExtensions<TZUGFeRDQuantityCodes>.EnumToString(tradeLineItem.UnitCode)); // BT-150
+    Writer.WriteAttributeString('unitCode', TEnumExtensions<TZUGFeRDQuantityCodes>.EnumToString(baseQuantityUnitCode)); // BT-150
     Writer.WriteValue(_formatDecimal(tradeLineItem.NetQuantity.Value));
     Writer.WriteEndElement;
   end;
@@ -1163,7 +1208,26 @@ function TZUGFeRDInvoiceDescriptor22UBLWriter.Validate(
   _descriptor: TZUGFeRDInvoiceDescriptor;
   _throwExceptions: Boolean): Boolean;
 begin
-  raise ENotImplemented.Create('Validate not implemented for UBL writer');
+  // Dieselben Regeln wie über den Dispatcher TZUGFeRDInvoiceDescriptor23Writer;
+  // vorher warf die Methode ENotImplemented und Save(filename) war unbenutzbar.
+  Result := _validateProfile(_descriptor, _throwExceptions) and
+            ValidateVersion23(_descriptor, _throwExceptions);
+end;
+
+function TZUGFeRDInvoiceDescriptor22UBLWriter._validateProfile(
+  _descriptor: TZUGFeRDInvoiceDescriptor;
+  _throwExceptions: Boolean): Boolean;
+begin
+  // Der Dispatcher lässt UBL nur mit dem Profil XRechnung zu (Save in
+  // TZUGFeRDInvoiceDescriptor23Writer); bei direkter Nutzung gilt dieselbe Grenze auch
+  // für Save(stream), sonst entstünde UBL mit fester XRechnung-CustomizationID, aber
+  // fremdem Profilfilter.
+  Result := _descriptor.Profile = TZUGFeRDProfile.XRechnung;
+  if (not Result) and _throwExceptions then
+    raise TZUGFeRDUnsupportedException.Create(
+      'Profile ' + TEnumExtensions<TZUGFeRDProfile>.EnumToString(_descriptor.Profile) +
+      ' and format UBL is not supported for ZUGFeRD version 2.3. ' +
+      'Format UBL is only allowed with profile XRechnung.');
 end;
 
 

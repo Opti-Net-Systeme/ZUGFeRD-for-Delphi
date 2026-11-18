@@ -28,10 +28,39 @@ uses
   ,intf.ZUGFeRDFormats
   ,intf.ZUGFeRDInvoiceFormatOptions
   ,intf.ZUGFeRDHelper
+  ,intf.ZUGFeRDExceptions
+  ,intf.ZUGFeRDInvoiceTypes
+  ,intf.ZUGFeRDTaxTypes
+  ,intf.ZUGFeRDTax
+  ,intf.ZUGFeRDTradeLineItem
   ;
 
 type
   TZUGFeRDIInvoiceDescriptorWriter = class abstract
+  protected
+    /// <summary>
+    /// Verhindert, dass fehlende Kopfsteuerbeträge als Null ausgegeben werden.
+    /// BT-117 verlangt einen Betrag (Factur-X: FX-SCH-A-000176); auch ZUGFeRD 1.0
+    /// fordert CalculatedAmount in der Kopfsteuer, trotz optionalem gemeinsamem XSD-Typ.
+    /// </summary>
+    class function ValidateTaxAmounts(descriptor: TZUGFeRDInvoiceDescriptor; throwExceptions: Boolean): Boolean; static;
+    /// <summary>
+    /// Gemeinsame Vorprüfung für ZUGFeRD 2.x / Factur-X / XRechnung (Version23).
+    /// Liegt hier, damit der Dispatcher (23Writer) und die direkt nutzbaren Writer
+    /// (23CIIWriter, 22UBLWriter) dieselben Regeln anwenden, ohne sich gegenseitig
+    /// im Interface-Teil zu referenzieren.
+    /// </summary>
+    class function ValidateVersion23(descriptor: TZUGFeRDInvoiceDescriptor; throwExceptions: Boolean): Boolean; static;
+    /// <summary>
+    /// Liefert BT-131 und berechnet einen fehlenden Wert nach PEPPOL-EN16931-R120
+    /// aus BT-146, BT-129, BT-149 sowie den Positionszu- und -abschlägen BG-27/BG-28.
+    /// Liegt hier aus demselben Grund wie ValidateVersion23: CII- und UBL-Writer
+    /// müssen für denselben Descriptor denselben Positionsbetrag schreiben.
+    /// BT-146 wird auch bei vorhandenem BT-131 verlangt, weil beide Writer den
+    /// Nettoeinzelpreis ohnehin ausgeben - der UBL-Writer unbedingt, sodass ein
+    /// fehlender Wert dort als 0,0000 im Dokument landen würde.
+    /// </summary>
+    class function CalculateLineTotalAmount(tradeLineItem: TZUGFeRDTradeLineItem): Currency; static;
   public
     procedure Save(descriptor: TZUGFeRDInvoiceDescriptor; stream: TStream; format: TZUGFeRDFormats = TZUGFeRDFormats.CII; options: TZUGFeRDInvoiceFormatOptions = Nil); overload; virtual; abstract;
     procedure Save(descriptor: TZUGFeRDInvoiceDescriptor; const filename: string; format: TZUGFeRDFormats = TZUGFeRDFormats.CII; options: TZUGFeRDInvoiceFormatOptions = Nil); overload;
@@ -62,19 +91,158 @@ implementation
 
 procedure TZUGFeRDIInvoiceDescriptorWriter.Save(descriptor: TZUGFeRDInvoiceDescriptor; const filename: string; format:TZUGFeRDFormats; options: TZUGFeRDInvoiceFormatOptions);
 var
+  ms: TMemoryStream;
   fs: TFileStream;
 begin
-  if Validate(descriptor, True) then
-  begin
+  if not Validate(descriptor, True) then
+    // Validate darf hier nur mit Exception scheitern; liefert eine Ableitung trotzdem
+    // false, wird das nicht stillschweigend geschluckt (sonst entstünde keine Datei).
+    raise TZUGFeRDUnsupportedException.Create(
+      'Invoice descriptor failed validation, file "' + filename + '" was not written.');
+
+  // Erst vollständig in den Speicher schreiben, dann die Zieldatei anlegen. Validate kennt
+  // das Zielformat nicht; unzulässige Kombinationen aus Profil und Format (z. B. UBL mit
+  // einem anderen Profil als XRechnung) fallen erst beim Schreiben auf. Ohne diesen Umweg
+  // haette fmCreate eine vorhandene Datei bereits geleert, bevor die Exception fliegt.
+  ms := TMemoryStream.Create;
+  try
+    Save(descriptor, ms, format, options);
+    ms.Position := 0;
     fs := TFileStream.Create(filename, fmCreate or fmOpenWrite);
     try
-      Save(descriptor, fs, format, options);
-      //fs.Flush;
-      //fs.Close;
+      fs.CopyFrom(ms, ms.Size);
     finally
       fs.Free;
     end;
+  finally
+    ms.Free;
   end;
+end;
+
+class function TZUGFeRDIInvoiceDescriptorWriter.ValidateTaxAmounts(
+  descriptor: TZUGFeRDInvoiceDescriptor; throwExceptions: Boolean): Boolean;
+var
+  tax: TZUGFeRDTax;
+begin
+  for tax in descriptor.Taxes do
+  begin
+    if not tax.TaxAmount.HasValue then
+    begin
+      if throwExceptions then
+        raise TZUGFeRDMissingDataException.Create('Tax amount is required for every header tax breakdown (BT-117).');
+      Exit(False);
+    end;
+  end;
+  Result := True;
+end;
+
+class function TZUGFeRDIInvoiceDescriptorWriter.ValidateVersion23(descriptor: TZUGFeRDInvoiceDescriptor; throwExceptions: Boolean): Boolean;
+begin
+  Result := false;
+
+  //TODO in C# enthalten, aber eigentlich falsch, deswegen auskommentiert
+  //if (descriptor.TZUGFeRDProfile = TZUGFeRDProfile.BasicWL) then
+  //if (throwExceptions) then
+  //  raise TZUGFeRDUnsupportedException.Create('Invalid TZUGFeRDProfile used for ZUGFeRD 2.0 invoice.')
+  //else
+  //  exit;
+
+  if (descriptor.Profile <> TZUGFeRDProfile.Extended) then // check tax types, only extended TZUGFeRDProfile allows tax types other than vat
+  begin
+    for var l : TZUGFeRDTradeLineItem in descriptor.TradeLineItems do
+    if l.TaxType.HasValue and (l.TaxType <> TZUGFeRDTaxTypes.VAT) then
+    begin
+      if (throwExceptions) then
+        raise TZUGFeRDUnsupportedException.Create('Tax types other than VAT only possible with extended TZUGFeRDProfile.')
+      else
+        exit;
+    end;
+  end;
+
+  if (descriptor.Profile in [TZUGFeRDProfile.XRechnung,TZUGFeRDProfile.XRechnung1]) then
+  begin
+    if (descriptor.Seller <> nil) then
+    begin
+      if (descriptor.SellerContact = nil) then
+      begin
+          if (throwExceptions) then
+            raise TZUGFeRDMissingDataException.Create('Seller contact (BG-6) required when seller is set (BR-DE-2).')
+          else
+            exit;
+      end
+      else
+      begin
+          if (descriptor.SellerContact.EmailAddress = '') then
+          begin
+            if (throwExceptions) then
+              raise TZUGFeRDMissingDataException.Create('Seller contact email address (BT-43) is required (BR-DE-7).')
+            else
+              exit;
+          end;
+          if (descriptor.SellerContact.PhoneNo = '') then
+          begin
+            if (throwExceptions) then
+                raise TZUGFeRDMissingDataException.Create('Seller contact phone no (BT-42) is required (BR-DE-6).')
+            else
+              exit;
+          end;
+          if (descriptor.SellerContact.Name = '') and
+             (descriptor.SellerContact.OrgUnit = '') then
+          begin
+            if (throwExceptions) then
+              raise TZUGFeRDMissingDataException.Create('Seller contact point (name or org unit) no (BT-41) is required (BR-DE-5).')
+            else
+              exit;
+          end;
+      end;
+    end;
+  end;
+
+  // BR-DE-17 ist eine XRechnung-Regel; Factur-X/ZUGFeRD erlauben z. B. die
+  // Vorauszahlungsrechnung (386), deshalb nur für die XRechnung-Profile prüfen.
+  if (descriptor.Profile in [TZUGFeRDProfile.XRechnung, TZUGFeRDProfile.XRechnung1]) and
+     not ((descriptor.Type_ = TZUGFeRDInvoiceType.PartialInvoice) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.Invoice) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.Correction) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.SelfBilledInvoice) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.CreditNote) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.PartialConstructionInvoice) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.PartialFinalConstructionInvoice) or
+          (descriptor.Type_ = TZUGFeRDInvoiceType.FinalConstructionInvoice)) then
+  begin
+    if (throwExceptions) then
+      raise TZUGFeRDUnsupportedException.Create('Invoice type (BT-3) does not match requirements of BR-DE-17')
+    else
+      exit;
+  end;
+
+  Result := ValidateTaxAmounts(descriptor, throwExceptions);
+end;
+
+class function TZUGFeRDIInvoiceDescriptorWriter.CalculateLineTotalAmount(
+  tradeLineItem: TZUGFeRDTradeLineItem): Currency;
+begin
+  if not tradeLineItem.NetUnitPrice.HasValue then
+    raise TZUGFeRDMissingDataException.Create('Net unit price (BT-146) is required for invoice lines.');
+
+  // PEPPOL-EN16931-R121: eine Preisbasismenge von 0 teilt durch null, eine negative
+  // dreht das Vorzeichen des Positionsbetrags um.
+  if tradeLineItem.NetQuantity.HasValue and (tradeLineItem.NetQuantity.Value <= 0) then
+    raise TZUGFeRDArgumentException.Create('Price base quantity (BT-149) must be greater than zero (PEPPOL-EN16931-R121).');
+
+  if tradeLineItem.LineTotalAmount.HasValue then
+    Exit(tradeLineItem.LineTotalAmount.Value);
+
+  Result := tradeLineItem.NetUnitPrice.Value * tradeLineItem.BilledQuantity;
+  if tradeLineItem.NetQuantity.HasValue then
+    Result := Result / tradeLineItem.NetQuantity.Value;
+
+  // BT-131 vermindert sich um BG-27-Positionsabschläge und erhöht sich um
+  // BG-28-Positionszuschläge. BG-29-Preisnachlässe stecken bereits in BT-146.
+  for var specifiedTradeAllowance in tradeLineItem.GetSpecifiedTradeAllowances do
+    Result := Result - specifiedTradeAllowance.ActualAmount;
+  for var specifiedTradeCharge in tradeLineItem.GetSpecifiedTradeCharges do
+    Result := Result + specifiedTradeCharge.ActualAmount;
 end;
 
 procedure TZUGFeRDIInvoiceDescriptorWriter.WriteOptionalElementString(
